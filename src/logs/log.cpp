@@ -5,13 +5,13 @@
 namespace logs
 {
 
-auto getLogger(const std::string& name) -> std::shared_ptr<spdlog::logger>
+auto getLogger(std::string const& name) -> std::shared_ptr<spdlog::logger>
 {
     auto logger = spdlog::get(name);
     if(!logger)
     {
         logger = spdlog::stdout_color_mt(name);
-        logger->set_level(spdlog::level::info);
+        logger->set_level(spdlog::level::debug);
         logger->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v");
     }
 

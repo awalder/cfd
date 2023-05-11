@@ -1,0 +1,1 @@
+SOURCES += files('appcontext.cpp')

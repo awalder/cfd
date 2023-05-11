@@ -13,8 +13,7 @@ public:
 
     auto elapsed() const -> Resolution
     {
-        return std::chrono::duration_cast<Resolution>(
-                ClockType::now() - _start);
+        return std::chrono::duration_cast<Resolution>(ClockType::now() - _start);
     }
 
     template<typename ReturnType = float>

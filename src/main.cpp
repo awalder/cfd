@@ -16,7 +16,7 @@ auto main() -> int
         app.init();
         app.run();
     }
-    catch(const std::exception& e)
+    catch(std::exception const& e)
     {
         log->error("Exception: {}", e.what());
         return EXIT_FAILURE;

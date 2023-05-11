@@ -8,6 +8,6 @@ namespace logs
 {
 
 using Log = std::shared_ptr<spdlog::logger>;
-auto getLogger(const std::string& name = "") -> Log;
+auto getLogger(std::string const& name = "") -> Log;
 
 } // namespace logs

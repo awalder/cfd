@@ -113,8 +113,7 @@ inline void toLower(std::string& str)
     });
 }
 #endif
-inline void replace(
-        std::string& str, std::string const& a, std::string const& b)
+inline void replace(std::string& str, std::string const& a, std::string const& b)
 {
     if(!a.empty())
     {
@@ -340,8 +339,7 @@ private:
     T_LineData readFile()
     {
         fileReadStream.seekg(0, std::ios::end);
-        const std::size_t fileSize =
-                static_cast<std::size_t>(fileReadStream.tellg());
+        const std::size_t fileSize = static_cast<std::size_t>(fileReadStream.tellg());
         fileReadStream.seekg(0, std::ios::beg);
         if(fileSize >= 3)
         {
@@ -350,8 +348,7 @@ private:
                     static_cast<char>(fileReadStream.get()),
                     static_cast<char>(fileReadStream.get())};
             isBOM =
-                    (header[0] == static_cast<char>(0xEF)
-                     && header[1] == static_cast<char>(0xBB)
+                    (header[0] == static_cast<char>(0xEF) && header[1] == static_cast<char>(0xBB)
                      && header[2] == static_cast<char>(0xBF));
         }
         else
@@ -361,7 +358,7 @@ private:
         std::string fileContents;
         fileContents.resize(fileSize);
         fileReadStream.seekg(isBOM ? 3 : 0, std::ios::beg);
-        fileReadStream.read(&fileContents[0], fileSize);
+        fileReadStream.read(&fileContents[0], static_cast<long>(fileSize));
         fileReadStream.close();
         T_LineData output;
         if(fileSize == 0)
@@ -417,8 +414,7 @@ public:
                 inSection = true;
                 data[section = parseData.first];
             }
-            else if(inSection
-                    && parseResult == INIParser::PDataType::PDATA_KEYVALUE)
+            else if(inSection && parseResult == INIParser::PDataType::PDATA_KEYVALUE)
             {
                 auto const& key = parseData.first;
                 auto const& value = parseData.second;
@@ -426,8 +422,7 @@ public:
             }
             if(lineData && parseResult != INIParser::PDataType::PDATA_UNKNOWN)
             {
-                if(parseResult == INIParser::PDataType::PDATA_KEYVALUE
-                   && !inSection)
+                if(parseResult == INIParser::PDataType::PDATA_KEYVALUE && !inSection)
                 {
                     continue;
                 }
@@ -479,8 +474,7 @@ public:
                     INIStringUtil::replace(key, "=", "\\=");
                     auto value = it2->second;
                     INIStringUtil::trim(value);
-                    fileWriteStream << key << ((prettyPrint) ? " = " : "=")
-                                    << value;
+                    fileWriteStream << key << ((prettyPrint) ? " = " : "=") << value;
                     if(++it2 == collection.end())
                     {
                         break;
@@ -511,9 +505,7 @@ private:
     std::string filename;
 
     T_LineData getLazyOutput(
-            T_LineDataPtr const& lineData,
-            INIStructure& data,
-            INIStructure& original)
+            T_LineDataPtr const& lineData, INIStructure& data, INIStructure& original)
     {
         T_LineData output;
         INIParser::T_ParseValues parseData;
@@ -578,10 +570,8 @@ private:
                                 INIStringUtil::replace(lineNorm, "\\=", "  ");
                                 auto equalsAt = lineNorm.find_first_of('=');
                                 auto valueAt = lineNorm.find_first_not_of(
-                                        INIStringUtil::whitespaceDelimiters,
-                                        equalsAt + 1);
-                                std::string outputLine =
-                                        line->substr(0, valueAt);
+                                        INIStringUtil::whitespaceDelimiters, equalsAt + 1);
+                                std::string outputLine = line->substr(0, valueAt);
                                 if(prettyPrint && equalsAt + 1 == valueAt)
                                 {
                                     outputLine += " ";
@@ -622,14 +612,13 @@ private:
                         auto value = it.second;
                         INIStringUtil::replace(key, "=", "\\=");
                         INIStringUtil::trim(value);
-                        linesToAdd.emplace_back(
-                                key + ((prettyPrint) ? " = " : "=") + value);
+                        linesToAdd.emplace_back(key + ((prettyPrint) ? " = " : "=") + value);
                     }
                 }
                 if(!linesToAdd.empty())
                 {
                     output.insert(
-                            output.begin() + lastKeyLine,
+                            output.begin() + static_cast<long>(lastKeyLine),
                             linesToAdd.begin(),
                             linesToAdd.end());
                 }
@@ -659,8 +648,7 @@ private:
                 auto value = it2.second;
                 INIStringUtil::replace(key, "=", "\\=");
                 INIStringUtil::trim(value);
-                output.emplace_back(
-                        key + ((prettyPrint) ? " = " : "=") + value);
+                output.emplace_back(key + ((prettyPrint) ? " = " : "=") + value);
             }
         }
         return output;
@@ -699,16 +687,13 @@ public:
             return false;
         }
         T_LineData output = getLazyOutput(lineData, data, originalData);
-        std::ofstream fileWriteStream(
-                filename, std::ios::out | std::ios::binary);
+        std::ofstream fileWriteStream(filename, std::ios::out | std::ios::binary);
         if(fileWriteStream.is_open())
         {
             if(fileIsBOM)
             {
                 char const utf8_BOM[3] = {
-                        static_cast<char>(0xEF),
-                        static_cast<char>(0xBB),
-                        static_cast<char>(0xBF)};
+                        static_cast<char>(0xEF), static_cast<char>(0xBB), static_cast<char>(0xBF)};
                 fileWriteStream.write(utf8_BOM, 3);
             }
             if(output.size())

@@ -1,7 +1,10 @@
 #pragma once
 
-#include "logs/log.h"
+#include "common/appcontext.h"
+#include "confighandler.h"
+#include "core/vulkan/context.h"
 #include "core/window/windowmanager.h"
+#include "logs/log.h"
 
 #include <chrono>
 
@@ -17,7 +20,12 @@ public:
     auto run() -> void;
 
 private:
+    // appcontext needs to be first to be destroyed last
+    std::shared_ptr<AppContext> _appContext;
+
+    // std::unique_ptr<ConfigHandler> _configHandler;
     std::unique_ptr<WindowManager> _windowManager;
+    std::unique_ptr<vk::Context> _vkContext;
     logs::Log _log;
 
     // Total runtime of application

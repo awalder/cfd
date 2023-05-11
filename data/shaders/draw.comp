@@ -1,0 +1,11 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+layout(binding = 0, rgba8) uniform writeonly image2D destTex;
+
+void main()
+{
+    ivec2 storeCoord = ivec2(gl_GlobalInvocationID.xy);
+    vec4 color = vec4(vec2(storeCoord) / vec2(imageSize(destTex)), 0.0, 1.0);
+    imageStore(destTex, storeCoord, color);
+}
