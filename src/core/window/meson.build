@@ -1,0 +1,1 @@
+SOURCES += files('windowmanager.cpp')
