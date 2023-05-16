@@ -123,7 +123,7 @@ VkResult Swapchain::acquireNextImage(VkSemaphore presentCompleteSemaphore, uint3
 //
 //
 
-VkResult Swapchain::queuePresent(VkQueue queue, uint32_t* imageIndex, VkSemaphore* waitSemaphore)
+VkResult Swapchain::queuePresent(VkQueue queue, uint32_t imageIndex, VkSemaphore* waitSemaphore)
 {
     VkPresentInfoKHR presentInfo = {};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -132,7 +132,7 @@ VkResult Swapchain::queuePresent(VkQueue queue, uint32_t* imageIndex, VkSemaphor
     presentInfo.pWaitSemaphores = waitSemaphore;
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &_swapchain;
-    presentInfo.pImageIndices = imageIndex;
+    presentInfo.pImageIndices = &imageIndex;
     presentInfo.pResults = nullptr;
 
     return vkQueuePresentKHR(queue, &presentInfo);

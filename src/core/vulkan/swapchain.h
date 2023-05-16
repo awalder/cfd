@@ -27,7 +27,7 @@ public:
 
     [[nodiscard]] auto acquireNextImage(VkSemaphore presentCompleteSemaphore, uint32_t* imageIndex)
             -> VkResult;
-    [[nodiscard]] auto queuePresent(VkQueue queue, uint32_t* imageIndex, VkSemaphore* waitSemaphore)
+    [[nodiscard]] auto queuePresent(VkQueue queue, uint32_t imageIndex, VkSemaphore* waitSemaphore)
             -> VkResult;
     void create(bool vsync);
     void createFrameBuffers(VkRenderPass renderpass);

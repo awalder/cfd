@@ -558,8 +558,9 @@ void Device::createImage(
     VK_CHECK(vmaCreateImage(_allocator, &imageInfo, &allocInfo, image, memory, nullptr));
 }
 
-void Device::createSampler(VkSampler* sampler)
+auto Device::createSampler() -> VkSampler
 {
+    VkSampler sampler = VK_NULL_HANDLE;
     VkSamplerCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     createInfo.pNext = nullptr;
@@ -580,7 +581,8 @@ void Device::createSampler(VkSampler* sampler)
     // createInfo.borderColor;
     createInfo.unnormalizedCoordinates = VK_FALSE;
 
-    VK_CHECK(vkCreateSampler(_logicalDevice, &createInfo, nullptr, sampler));
+    VK_CHECK(vkCreateSampler(_logicalDevice, &createInfo, nullptr, &sampler));
+    return sampler;
 }
 
 auto Device::loadShaderFromFile(std::string const& path, VkShaderStageFlagBits stage)

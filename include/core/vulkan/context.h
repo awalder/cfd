@@ -3,10 +3,11 @@
 #include "GLFW/glfw3.h"
 #include "common/appcontext.h"
 #include "core/confighandler.h"
+#include "core/vulkan/device.h"
 #include "entt/signal/dispatcher.hpp"
 #include "event/commonevents.h"
+#include "rocket/simu.h"
 #include "event/sub.h"
-#include "core/vulkan/device.h"
 #include "logs/log.h"
 #include "model/vertex.h"
 #include "vkmemalloc.h"
@@ -64,6 +65,8 @@ private:
     uint32_t _frameIndex = 0;
     bool _frameBufferResized = false;
 
+    std::unique_ptr<simu::Simu> _simu;
+
     GLFWwindow* _window = nullptr;
     std::unique_ptr<Device> _device;
     std::shared_ptr<DebugUtils const> _debugUtils;
@@ -87,16 +90,15 @@ private:
 
     struct
     {
-        VkSemaphore graphics;
-        VkSemaphore compute;
-        VkFence fence;
+        VkSemaphore graphics = VK_NULL_HANDLE;
+        VkSemaphore compute = VK_NULL_HANDLE;
+        VkFence fence = VK_NULL_HANDLE;
     } _sync;
 
     struct UniformBufferObject
     {
         float time;
     };
-
 
     VkRenderPass _renderpass = VK_NULL_HANDLE;
     VkPipelineLayout _pipelineLayout = VK_NULL_HANDLE;

@@ -6,4 +6,5 @@ SOURCES = files(
 subdir('common')
 subdir('core')
 subdir('logs')
+subdir('rocket')
 subdir('utils')

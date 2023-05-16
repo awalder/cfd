@@ -125,7 +125,7 @@ public:
             uint32_t mipLevels = 1,
             uint32_t arrayLayers = 1);
 
-    void createSampler(VkSampler* sampler);
+    auto createSampler() -> VkSampler;
 
     auto loadShaderFromFile(std::string const& path, VkShaderStageFlagBits stage)
             -> VkPipelineShaderStageCreateInfo;

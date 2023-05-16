@@ -13,7 +13,5 @@ layout(location = 0) out vec4 outColor;
 
 void main()
 {
-    outColor = vec4(uv.x * sin(ubo.time), uv.y * sin(ubo.time), cos(ubo.time), 1.0);
-    outColor = (outColor + 1 / 2);
-    // outColor = texture(colorTexture, uv);
+    outColor = texture(colorTexture, uv);
 }

@@ -1,8 +1,8 @@
 
 #include "core/vulkan/context.h"
 #include "GLFW/glfw3.h"
+#include "core/vulkan/descriptorgen.h"
 #include "debugutils.h"
-#include "descriptorgen.h"
 #include "fmt/ranges.h"
 #include "swapchain.h"
 #include "utils/vkutils.h"
@@ -29,34 +29,27 @@ Context::~Context()
 
     for(size_t i = 0; i < _uniformBuffer.size(); ++i)
     {
-        vmaDestroyBuffer(
-                _device->getAllocator(),
-                _uniformBuffer[i],
-                _uniformMemory[i]);
+        vmaDestroyBuffer(_device->getAllocator(), _uniformBuffer[i], _uniformMemory[i]);
     }
 
     if(_descSetLayout != VK_NULL_HANDLE)
     {
-        vkDestroyDescriptorSetLayout(
-                _device->getLogicalDevice(), _descSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device->getLogicalDevice(), _descSetLayout, nullptr);
     }
 
     if(_descriptorPool != VK_NULL_HANDLE)
     {
-        vkDestroyDescriptorPool(
-                _device->getLogicalDevice(), _descriptorPool, nullptr);
+        vkDestroyDescriptorPool(_device->getLogicalDevice(), _descriptorPool, nullptr);
     }
 
     {
         if(_sync.graphics != VK_NULL_HANDLE)
         {
-            vkDestroySemaphore(
-                    _device->getLogicalDevice(), _sync.graphics, nullptr);
+            vkDestroySemaphore(_device->getLogicalDevice(), _sync.graphics, nullptr);
         }
         if(_sync.compute != VK_NULL_HANDLE)
         {
-            vkDestroySemaphore(
-                    _device->getLogicalDevice(), _sync.compute, nullptr);
+            vkDestroySemaphore(_device->getLogicalDevice(), _sync.compute, nullptr);
         }
         if(_sync.fence != VK_NULL_HANDLE)
         {
@@ -99,9 +92,11 @@ Context::~Context()
     }
 
     _swapchain.reset();
+    _descriptorSetGenerator.reset();
+    _simu.reset();
+
     _device.reset();
     _debugUtils.reset();
-    _descriptorSetGenerator.reset();
 
     if(_instance)
     {
@@ -117,6 +112,10 @@ auto Context::onEvent(event::FrameBufferResizeEvent const& event) -> void
 
 void Context::renderFrame(float dt)
 {
+    // Compute stage
+
+    // vkWaitForFences(_device->getLogicalDevice(), 1, &_sync.fence, VK_TRUE, UINT64_MAX);
+    // vkResetFences(_device->getLogicalDevice(), 1, &_sync.fence);
     vkWaitForFences(_device->getLogicalDevice(), 1, &_fences[_frameIndex], VK_TRUE, UINT64_MAX);
 
     uint32_t imageIndex = 0;
@@ -133,6 +132,24 @@ void Context::renderFrame(float dt)
         assert(false);
     }
 
+    _simu->updateUniformBuffers(dt);
+
+    // TODO test if I can use _frameindex to work with commandbuffers
+    //
+    auto* computeCmdBuf = _simu->recordCommandBuffer(imageIndex);
+    VkPipelineStageFlags computeWaitStages[] = {VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT};
+
+    auto submitInfos = std::array<VkSubmitInfo, 2>{};
+    submitInfos[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfos[0].waitSemaphoreCount = 1;
+    submitInfos[0].pWaitSemaphores = &_presentCompleteSemaphores[_frameIndex];
+    submitInfos[0].pWaitDstStageMask = computeWaitStages;
+    submitInfos[0].commandBufferCount = 1;
+    submitInfos[0].pCommandBuffers = &computeCmdBuf;
+    submitInfos[0].signalSemaphoreCount = 1;
+    submitInfos[0].pSignalSemaphores = &_sync.compute;
+
+    // Now the rendering and presentation operations
     if(_imagesInFlight[imageIndex] != VK_NULL_HANDLE)
     {
         vkWaitForFences(
@@ -144,27 +161,34 @@ void Context::renderFrame(float dt)
     updateUniformBuffers(dt);
     recordCommandBuffers(imageIndex);
 
-    VkCommandBuffer cmdBuffers[] = {_renderingCommandBuffers[imageIndex]};
-    VkPipelineStageFlags graphicsWaitStages[] = {
+    const std::vector<VkCommandBuffer> cmdBuffers = {_renderingCommandBuffers[imageIndex]};
+
+    const std::vector<VkPipelineStageFlags> graphicsWaitStages = {
             VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    VkSemaphore graphicsWaitSemaphores[] = {_presentCompleteSemaphores[_frameIndex]};
 
-    VkSemaphore graphicsSignalSemaphores[] = {_renderingCompleteSemaphores[_frameIndex]};
+    const std::vector<VkSemaphore> graphicsWaitSemaphores = {
+            _sync.compute};
 
-    VkSubmitInfo submitInfo = {};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.pNext = nullptr;
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = graphicsWaitSemaphores;
-    submitInfo.pWaitDstStageMask = graphicsWaitStages;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = cmdBuffers;
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = graphicsSignalSemaphores;
+    const std::vector<VkSemaphore> graphicsSignalSemaphores = {
+            _renderingCompleteSemaphores[_frameIndex]};
+
+    submitInfos[1].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfos[1].pNext = nullptr;
+    submitInfos[1].waitSemaphoreCount = static_cast<uint32_t>(graphicsWaitSemaphores.size());
+    submitInfos[1].pWaitSemaphores = graphicsWaitSemaphores.data();
+    submitInfos[1].pWaitDstStageMask = graphicsWaitStages.data();
+    submitInfos[1].commandBufferCount = static_cast<uint32_t>(cmdBuffers.size());
+    submitInfos[1].pCommandBuffers = cmdBuffers.data();
+    submitInfos[1].signalSemaphoreCount = static_cast<uint32_t>(graphicsSignalSemaphores.size());
+    submitInfos[1].pSignalSemaphores = graphicsSignalSemaphores.data();
 
     vkResetFences(_device->getLogicalDevice(), 1, &_fences[_frameIndex]);
 
-    result = vkQueueSubmit(_device->getGraphicsQueue(), 1, &submitInfo, _fences[_frameIndex]);
+    result = vkQueueSubmit(
+            _device->getGraphicsQueue(),
+            static_cast<uint32_t>(submitInfos.size()),
+            submitInfos.data(),
+            _fences[_frameIndex]);
 
     if(result != VK_SUCCESS)
     {
@@ -173,7 +197,7 @@ void Context::renderFrame(float dt)
     }
 
     result = _swapchain->queuePresent(
-            _device->getGraphicsQueue(), &imageIndex, &_renderingCompleteSemaphores[_frameIndex]);
+            _device->getGraphicsQueue(), imageIndex, &_renderingCompleteSemaphores[_frameIndex]);
 
     if(result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR || _frameBufferResized)
     {
@@ -254,6 +278,8 @@ auto Context::init(VkExtent2D swapchainExtent) -> void
 
     // m_Scene->loadModels(m_Device.get());
     _swapchain->create(_config.vsync);
+
+    _simu = std::make_unique<simu::Simu>(_device.get(), _swapchain->getImageCount());
 
     createUniformBuffers();
     createSynchronizationPrimitives();
@@ -439,12 +465,10 @@ auto Context::createSynchronizationPrimitives() -> void
 
     VkSemaphoreCreateInfo semaphoreInfo = {};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    semaphoreInfo.pNext = nullptr;
     semaphoreInfo.flags = 0;
 
     VkFenceCreateInfo fenceInfo = {};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.pNext = nullptr;
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
     _log->debug("Creating {} semaphores and fences", imageCount);
@@ -475,13 +499,13 @@ auto Context::createSynchronizationPrimitives() -> void
 
     VK_CHECK(vkCreateFence(_device->getLogicalDevice(), &compfenceInfo, nullptr, &_sync.fence));
 
-    VkSubmitInfo submitInfo = {};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.pNext = nullptr;
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &_sync.compute;
-    VK_CHECK(vkQueueSubmit(_device->getGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE));
-    VK_CHECK(vkQueueWaitIdle(_device->getGraphicsQueue()));
+    // need to signal the first semaphore in order to do the compute work
+    // VkSubmitInfo submitInfo = {};
+    // submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    // submitInfo.signalSemaphoreCount = 1;
+    // submitInfo.pSignalSemaphores = &_renderingCompleteSemaphores[0];
+    // VK_CHECK(vkQueueSubmit(_device->getGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE));
+    // VK_CHECK(vkQueueWaitIdle(_device->getGraphicsQueue()));
 }
 
 auto Context::createRenderPass() -> void
@@ -940,6 +964,7 @@ void Context::setupDescriptors()
 
     // auto writes = m_Scene->getDescriptorWrites();
     // auto const imageInfos = m_AntSimu->imageTargetInfo;
+    auto imageInfos = _simu->getImageInfo();
 
     for(std::size_t i = 0; i < _descriptorSet.size(); ++i)
     {
@@ -950,7 +975,7 @@ void Context::setupDescriptors()
         bufferInfo.range = VK_WHOLE_SIZE;
 
         _descriptorSetGenerator->bind(_descriptorSet[i], 0, {bufferInfo});
-        // _descgen->bind(m_DescriptorSet[i], 1, {imageInfos});
+        _descriptorSetGenerator->bind(_descriptorSet[i], 1, {imageInfos});
     }
     _descriptorSetGenerator->updateSetContents();
 }
