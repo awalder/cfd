@@ -2,6 +2,7 @@
 
 #include "GLFW/glfw3.h"
 #include "core/vulkan/vkmemalloc.h"
+#include "core/vulkan/vktypes.h"
 #include "logs/log.h"
 #include "vulkan/vulkan.h"
 
@@ -74,6 +75,13 @@ public:
 
     void flushCommandBuffer(VkCommandBuffer commandBuffer, VkQueue queue, bool free = true);
 
+    auto createBuffer(
+            VkBufferUsageFlags usage,
+            VmaMemoryUsage vmaUsage,
+            VkMemoryPropertyFlags properties,
+            VkDeviceSize size,
+            void* data = nullptr) -> vk::Buffer;
+
     void createBuffer(
             VkBufferUsageFlags usage,
             VmaMemoryUsage vmaUsage,
@@ -89,6 +97,19 @@ public:
             VkBuffer* buffer,
             VmaAllocation* bufferMemory,
             void* data);
+
+    auto createBufferOnGPU(
+            VkBufferUsageFlags usage,
+            VkDeviceSize size,
+            void* data) -> vk::Buffer;
+
+    auto createImageOnGPU(
+            VkImageUsageFlags usage,
+            VkDeviceSize size,
+            VkFormat format,
+            VkImageLayout layout,
+            VkExtent2D extent,
+            void* data) -> vk::Texture;
 
     void createImageOnGPU(
             VkImageUsageFlags usage,

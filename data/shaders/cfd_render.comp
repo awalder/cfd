@@ -1,0 +1,56 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(binding = 0) uniform UniformBufferObject
+{
+    vec4 color;
+    ivec2 gridSize;
+    float time;
+}
+ubo;
+
+struct GridCell
+{
+    vec2 velocity;
+    vec2 externalForce;
+    float pressure;
+    float density;
+    float temperature;
+    int boundaryType;
+};
+
+layout(std140, binding = 1) buffer Grid1
+{
+    GridCell read[];
+};
+
+layout(std140, binding = 2) buffer Grid2
+{
+    GridCell write[];
+};
+
+layout(binding = 3, rgba8) uniform writeonly image2D image;
+
+void main()
+{
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    int index = pos.x + ubo.gridSize.x * pos.y;
+
+    // Load variables from the read buffer
+    float density = read[index].density;
+    float pressure = read[index].pressure;
+    float temperature = read[index].temperature;
+
+    // Normalize the variables to the range [0, 1]
+    // density = clamp(density, 0.0, 1.0);
+    // pressure = clamp(pressure, 0.0, 1.0);
+    // temperature = clamp(temperature, 0.0, 1.0);
+
+    density = density / 100;
+    pressure = pressure / 100;
+    temperature = temperature / 100;
+
+    // Store to image
+    imageStore(image, pos, vec4(density, pressure, temperature, 1.0));
+}

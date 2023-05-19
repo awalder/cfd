@@ -7,6 +7,7 @@
 #include "entt/signal/dispatcher.hpp"
 #include "event/commonevents.h"
 #include "rocket/simu.h"
+#include "core/vulkan/vktypes.h"
 #include "event/sub.h"
 #include "logs/log.h"
 #include "model/vertex.h"
@@ -47,7 +48,7 @@ private:
     auto allocateCommandBuffers() -> void;
     auto recordCommandBuffers(uint32_t nextImageIndex) -> void;
     auto createUniformBuffers() -> void;
-    auto updateUniformBuffers(float dt) -> void;
+    auto update(float dt, uint32_t imageIndex) -> void;
     auto cleanupSwapchain() -> void;
     auto recreateSwapchain() -> void;
     auto createVertexIndexBuffers() -> void;
@@ -82,10 +83,8 @@ private:
 
     struct
     {
-        VkBuffer vertexBuffer = VK_NULL_HANDLE;
-        VmaAllocation vertexMemory = VK_NULL_HANDLE;
-        VkBuffer indexBuffer = VK_NULL_HANDLE;
-        VmaAllocation indexMemory = VK_NULL_HANDLE;
+        vk::Buffer vertexBuffer;
+        vk::Buffer indexBuffer;
     } quad;
 
     struct
@@ -97,6 +96,7 @@ private:
 
     struct UniformBufferObject
     {
+        glm::vec2 gridSize;
         float time;
     };
 
@@ -110,8 +110,7 @@ private:
     std::vector<VkFence> _imagesInFlight;
     std::vector<VkCommandBuffer> _renderingCommandBuffers;
 
-    std::vector<VkBuffer> _uniformBuffer;
-    std::vector<VmaAllocation> _uniformMemory;
+    std::vector<vk::Buffer> _uniformBuffer;
 
     VkDescriptorPool _descriptorPool = VK_NULL_HANDLE;
     VkDescriptorSetLayout _descSetLayout = VK_NULL_HANDLE;

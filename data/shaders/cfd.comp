@@ -1,0 +1,144 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(binding = 0) uniform UniformBufferObject
+{
+    vec4 color;
+    ivec2 gridSize;
+    float time;
+}
+ubo;
+
+struct GridCell
+{
+    vec2 velocity;
+    vec2 externalForce;
+    float pressure;
+    float density;
+    float temperature;
+    int boundaryType;
+};
+
+layout(std140, binding = 1) buffer Grid1
+{
+    GridCell read[];
+};
+
+layout(std140, binding = 2) buffer Grid2
+{
+    GridCell write[];
+};
+
+GridCell makeCell()
+{
+    GridCell cell;
+    cell.velocity = vec2(0.0f);
+    cell.externalForce = vec2(0.0f);
+    cell.pressure = 0.0f;
+    cell.density = 0.0f;
+    cell.temperature = 0.0f;
+    cell.boundaryType = 0;
+    return cell;
+}
+
+GridCell getNeighbor(ivec2 pos, ivec2 offset)
+{
+    ivec2 neighborPos = pos + offset;
+    // Ensure the neighbor position is within the grid
+    if(neighborPos.x < 0 || neighborPos.x >= ubo.gridSize.x || neighborPos.y < 0
+       || neighborPos.y >= ubo.gridSize.y)
+    {
+        return makeCell();
+    }
+    int index = neighborPos.x + ubo.gridSize.x * neighborPos.y;
+    return read[index];
+}
+
+// void advect(int N, int b, float* d, float* d0, float* u, float* v, float dt)
+// {
+//     int i, j, i0, j0, i1, j1;
+//     float x, y, s0, t0, s1, t1, dt0;
+//     dt0 = dt * N;
+//     for(i = 1; i <= N; i++)
+//     {
+//         for(j = 1; j <= N; j++)
+//         {
+//             x = i - dt0 * u[IX(i, j)];
+//             y = j - dt0 * v[IX(i, j)];
+//             if(x < 0.5)
+//                 x = 0.5;
+//             if(x > N + 0.5)
+//                 x = N + 0.5;
+//             i0 = (int)x;
+//             i1 = i0 + 1;
+//             if(y < 0.5)
+//                 y = 0.5;
+//             if(y > N + 0.5)
+//                 y = N + 0.5;
+//             j0 = (int)y;
+//             j1 = j0 + 1;
+//             s1 = x - i0;
+//             s0 = 1 - s1;
+//             t1 = y - j0;
+//             t0 = 1 - t1;
+//             d[IX(i, j)] = s0 * (t0 * d0[IX(i0, j0)] + t1 * d 0 [IX(i0, j1)])
+//                           + s1 * (t0 * d0[IX(i1, j0)] + t1 * d 0 [IX(i1, j1)]);
+//         }
+//     }
+//     set_bnd(N, b, d);
+// }
+
+void main()
+{
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    int index = pos.x + ubo.gridSize.x * pos.y;
+
+    // Load variables from the read buffer
+    vec2 velocity = read[index].velocity;
+    vec2 externalForce = read[index].externalForce;
+    float density = read[index].density;
+    float pressure = read[index].pressure;
+
+    // Add forces
+    velocity += externalForce * ubo.time;
+
+    // Advect
+    vec2 advectPos = pos - ubo.time * velocity;
+    GridCell advectCell = getNeighbor(pos, ivec2(advectPos));
+    velocity = advectCell.velocity;
+    density = advectCell.density;
+
+    // Project
+    for(int i = 0; i < 10; i++) // Iterate a fixed number of times for simplicity
+    {
+        GridCell left = getNeighbor(pos, ivec2(-1, 0));
+        GridCell right = getNeighbor(pos, ivec2(1, 0));
+        GridCell bottom = getNeighbor(pos, ivec2(0, -1));
+        GridCell top = getNeighbor(pos, ivec2(0, 1));
+
+        float divergence =
+                0.5f * (right.velocity.x - left.velocity.x + top.velocity.y - bottom.velocity.y);
+
+        pressure = (divergence + left.pressure + right.pressure + bottom.pressure + top.pressure)
+                   / 4.0f;
+
+        velocity -= 0.5f * vec2(right.pressure - left.pressure, top.pressure - bottom.pressure);
+    }
+
+    // Diffuse
+    for(int i = 0; i < 10; i++) // Iterate a fixed number of times for simplicity
+    {
+        GridCell left = getNeighbor(pos, ivec2(-1, 0));
+        GridCell right = getNeighbor(pos, ivec2(1, 0));
+        GridCell bottom = getNeighbor(pos, ivec2(0, -1));
+        GridCell top = getNeighbor(pos, ivec2(0, 1));
+
+        density = (density + left.density + right.density + bottom.density + top.density) / 4.0f;
+    }
+
+    // Write the updated variables back to the write buffer
+    write[index].velocity = velocity;
+    write[index].density = density;
+    write[index].pressure = pressure;
+}

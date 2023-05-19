@@ -6,7 +6,8 @@ if GLSLC.found()
   sources = [
     'simple.frag',
     'simple.vert',
-    'draw.comp',
+    'cfd.comp',
+    'cfd_render.comp',
   ]
 
   foreach s : sources

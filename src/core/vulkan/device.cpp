@@ -280,6 +280,27 @@ void Device::flushCommandBuffer(VkCommandBuffer commandBuffer, VkQueue queue, bo
     }
 }
 
+auto Device::createBuffer(
+        VkBufferUsageFlags usage,
+        VmaMemoryUsage vmaUsage,
+        VkMemoryPropertyFlags properties,
+        VkDeviceSize size,
+        void* srcData) -> vk::Buffer
+{
+    auto buffer = vk::Buffer{};
+
+    createBuffer(usage, vmaUsage, properties, size, &buffer.buffer, &buffer.memory, srcData);
+
+    buffer.allocator = _allocator;
+    buffer.info =
+            VkDescriptorBufferInfo{.buffer = buffer.buffer, .offset = 0, .range = VK_WHOLE_SIZE};
+    buffer.size = size;
+    buffer.usage = vmaUsage;
+    buffer.flags = properties;
+
+    return buffer;
+}
+
 void Device::createBuffer(
         VkBufferUsageFlags usage,
         VmaMemoryUsage vmaUsage,
@@ -318,6 +339,21 @@ void Device::createBuffer(
     }
 }
 
+auto Device::createBufferOnGPU(VkBufferUsageFlags usage, VkDeviceSize size, void* data)
+        -> vk::Buffer
+{
+    auto buffer = vk::Buffer{};
+
+    createBufferOnGPU(usage, size, &buffer.buffer, &buffer.memory, data);
+
+    buffer.allocator = _allocator;
+    buffer.info =
+            VkDescriptorBufferInfo{.buffer = buffer.buffer, .offset = 0, .range = VK_WHOLE_SIZE};
+    buffer.size = size;
+
+    return buffer;
+}
+
 void Device::createBufferOnGPU(
         VkBufferUsageFlags usage,
         VkDeviceSize size,
@@ -347,6 +383,39 @@ void Device::createBufferOnGPU(
 
     copyBuffer(stagingBuffer, *buffer, size);
     vmaDestroyBuffer(_allocator, stagingBuffer, stagingBufferMemory);
+}
+
+auto Device::createImageOnGPU(
+        VkImageUsageFlags usage,
+        VkDeviceSize size,
+        VkFormat format,
+        VkImageLayout layout,
+        VkExtent2D extent,
+        void* data) -> vk::Texture
+{
+    vk::Texture texture;
+
+    createImageOnGPU(
+            usage,
+            size,
+            format,
+            layout,
+            extent,
+            &texture.image,
+            &texture.memory,
+            data);
+
+    texture.allocator = _allocator;
+    texture.info = VkDescriptorImageInfo{
+            .sampler = VK_NULL_HANDLE,
+            .imageView = VK_NULL_HANDLE,
+            .imageLayout = layout};
+
+    texture.device = _logicalDevice;
+    texture.extent = extent;
+    texture.layout = layout;
+
+    return texture;
 }
 
 void Device::createImageOnGPU(

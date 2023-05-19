@@ -1,7 +1,8 @@
 SOURCES += files(
   'context.cpp',
+  'debugutils.cpp',
   'descriptorgen.cpp',
   'device.cpp',
   'swapchain.cpp',
-  'debugutils.cpp',
+  'vktypes.cpp',
 )

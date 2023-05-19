@@ -27,9 +27,9 @@ Context::~Context()
 {
     vkDeviceWaitIdle(_device->getLogicalDevice());
 
-    for(size_t i = 0; i < _uniformBuffer.size(); ++i)
+    for(auto& buffer : _uniformBuffer)
     {
-        vmaDestroyBuffer(_device->getAllocator(), _uniformBuffer[i], _uniformMemory[i]);
+        buffer.clean();
     }
 
     if(_descSetLayout != VK_NULL_HANDLE)
@@ -56,10 +56,8 @@ Context::~Context()
             vkDestroyFence(_device->getLogicalDevice(), _sync.fence, nullptr);
         }
 
-        if(quad.vertexBuffer)
-            vmaDestroyBuffer(_device->getAllocator(), quad.vertexBuffer, quad.vertexMemory);
-        if(quad.indexBuffer)
-            vmaDestroyBuffer(_device->getAllocator(), quad.indexBuffer, quad.indexMemory);
+        quad.vertexBuffer.clean();
+        quad.indexBuffer.clean();
     }
 
     if(_pipelineLayout)
@@ -132,7 +130,7 @@ void Context::renderFrame(float dt)
         assert(false);
     }
 
-    _simu->updateUniformBuffers(dt);
+    _simu->update(dt, imageIndex);
 
     // TODO test if I can use _frameindex to work with commandbuffers
     //
@@ -158,7 +156,7 @@ void Context::renderFrame(float dt)
 
     _imagesInFlight[imageIndex] = _fences[_frameIndex];
 
-    updateUniformBuffers(dt);
+    update(dt, imageIndex);
     recordCommandBuffers(imageIndex);
 
     const std::vector<VkCommandBuffer> cmdBuffers = {_renderingCommandBuffers[imageIndex]};
@@ -166,8 +164,7 @@ void Context::renderFrame(float dt)
     const std::vector<VkPipelineStageFlags> graphicsWaitStages = {
             VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
 
-    const std::vector<VkSemaphore> graphicsWaitSemaphores = {
-            _sync.compute};
+    const std::vector<VkSemaphore> graphicsWaitSemaphores = {_sync.compute};
 
     const std::vector<VkSemaphore> graphicsSignalSemaphores = {
             _renderingCompleteSemaphores[_frameIndex]};
@@ -836,8 +833,8 @@ auto Context::recordCommandBuffers(uint32_t nextImageIndex) -> void
                 0,
                 nullptr);
 
-        vkCmdBindVertexBuffers(cmdBuf, 0, 1, &quad.vertexBuffer, offsets);
-        vkCmdBindIndexBuffer(cmdBuf, quad.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdBindVertexBuffers(cmdBuf, 0, 1, &quad.vertexBuffer.buffer, offsets);
+        vkCmdBindIndexBuffer(cmdBuf, quad.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
         vkCmdDrawIndexed(cmdBuf, static_cast<uint32_t>(_indices.size()), 1, 0, 0, 0);
 
         viewport.y = 0;
@@ -854,32 +851,47 @@ auto Context::recordCommandBuffers(uint32_t nextImageIndex) -> void
 void Context::createUniformBuffers()
 {
     _uniformBuffer.resize(_swapchain->getImageCount());
-    _uniformMemory.resize(_swapchain->getImageCount());
 
     VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
-    for(size_t i = 0; i < _uniformBuffer.size(); ++i)
+    for(auto& buffer : _uniformBuffer)
     {
-        _device->createBuffer(
+        buffer = _device->createBuffer(
                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                 VMA_MEMORY_USAGE_CPU_TO_GPU,
                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-                bufferSize,
-                &_uniformBuffer[i],
-                &_uniformMemory[i]);
+                bufferSize);
     }
 }
 
-void Context::updateUniformBuffers(float dt)
+void Context::update(float dt, uint32_t imageIndex)
 {
     auto ubo = UniformBufferObject{};
 
+    ubo.gridSize = _simu->getGridSize();
     ubo.time = dt;
 
-    void* data = nullptr;
-    vmaMapMemory(_device->getAllocator(), _uniformMemory[_frameIndex], &data);
-    memcpy(data, &ubo, sizeof(ubo));
-    vmaUnmapMemory(_device->getAllocator(), _uniformMemory[_frameIndex]);
+    auto& buffer = _uniformBuffer[_frameIndex];
+    buffer.copyTo(ubo);
+
+    // auto i = _frameIndex;
+    // auto readBufferInfo = _simu->getGridBufferInfo();
+    // auto descriptorWrites = std::array<VkWriteDescriptorSet, 1>{};
+    //
+    // descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    // descriptorWrites[0].dstSet = _descriptorSet.at(imageIndex);
+    // descriptorWrites[0].dstBinding = 1;
+    // descriptorWrites[0].dstArrayElement = 0;
+    // descriptorWrites[0].descriptorCount = 1;
+    // descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    // descriptorWrites[0].pBufferInfo = &readBufferInfo;
+    //
+    // vkUpdateDescriptorSets(
+    //         _device->getLogicalDevice(),
+    //         static_cast<uint32_t>(descriptorWrites.size()),
+    //         descriptorWrites.data(),
+    //         0,
+    //         nullptr);
 }
 
 auto Context::cleanupSwapchain() -> void
@@ -920,21 +932,13 @@ void Context::createVertexIndexBuffers()
 {
     {
         VkDeviceSize size = sizeof(_vertices[0]) * _vertices.size();
-        _device->createBufferOnGPU(
-                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                size,
-                &quad.vertexBuffer,
-                &quad.vertexMemory,
-                _vertices.data());
+        quad.vertexBuffer = _device->createBufferOnGPU(
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, size, _vertices.data());
     }
     {
         VkDeviceSize size = sizeof(_indices[0]) * _indices.size();
-        _device->createBufferOnGPU(
-                VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                size,
-                &quad.indexBuffer,
-                &quad.indexMemory,
-                _indices.data());
+        quad.indexBuffer =
+                _device->createBufferOnGPU(VK_BUFFER_USAGE_INDEX_BUFFER_BIT, size, _indices.data());
     }
 }
 
@@ -962,20 +966,13 @@ void Context::setupDescriptors()
         set = _descriptorSetGenerator->generateSet(_descriptorPool, _descSetLayout);
     }
 
-    // auto writes = m_Scene->getDescriptorWrites();
-    // auto const imageInfos = m_AntSimu->imageTargetInfo;
-    auto imageInfos = _simu->getImageInfo();
-
     for(std::size_t i = 0; i < _descriptorSet.size(); ++i)
     {
-        // Uniform buffer info
-        VkDescriptorBufferInfo bufferInfo = {};
-        bufferInfo.buffer = _uniformBuffer[i];
-        bufferInfo.offset = 0;
-        bufferInfo.range = VK_WHOLE_SIZE;
+        auto& uniformBuffer = _uniformBuffer[i];
+        auto imageInfo = _simu->getRenderImageInfo();
 
-        _descriptorSetGenerator->bind(_descriptorSet[i], 0, {bufferInfo});
-        _descriptorSetGenerator->bind(_descriptorSet[i], 1, {imageInfos});
+        _descriptorSetGenerator->bind(_descriptorSet[i], 0, {uniformBuffer.info});
+        _descriptorSetGenerator->bind(_descriptorSet[i], 1, {imageInfo});
     }
     _descriptorSetGenerator->updateSetContents();
 }

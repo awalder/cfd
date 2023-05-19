@@ -1,32 +1,34 @@
 #include "rocket/simu.h"
 
-#include "core/vulkan/descriptorgen.h"
 #include "utils/vkutils.h"
 
 namespace app::simu
 {
 
-Simu::Simu(vk::Device* device, uint32_t imageCount) : _device(device), _extent({1024, 1024})
+Simu::Simu(vk::Device* device, uint32_t imageCount) : _device(device)
 {
-    createTexture();
+    _descGen = std::make_shared<app::vk::DescriptorSetGenerator>(_device->getLogicalDevice());
     createUniformBuffers();
+    createRenderTarget();
+    generateGrid();
     AllocateCommandBuffer(imageCount);
-    setupDescriptors();
+    setupDescriptors(imageCount);
     createComputePipeline();
-    updateUniformBuffers(0.0f);
+    update(0.0f, 0);
 }
 
 Simu::~Simu()
 {
-    clean();
+    _uniformBuffer.clean();
+    for(auto& buffer : _grid.buffers)
+        buffer.clean();
 
     if(_compute.layout)
         vkDestroyPipelineLayout(_device->getLogicalDevice(), _compute.layout, nullptr);
     if(_compute.calculate)
         vkDestroyPipeline(_device->getLogicalDevice(), _compute.calculate, nullptr);
-
-    if(_uboResources.buffer)
-        vmaDestroyBuffer(_device->getAllocator(), _uboResources.buffer, _uboResources.memory);
+    if(_compute.render)
+        vkDestroyPipeline(_device->getLogicalDevice(), _compute.render, nullptr);
 
     if(_descriptors.layout)
         vkDestroyDescriptorSetLayout(_device->getLogicalDevice(), _descriptors.layout, nullptr);
@@ -35,32 +37,57 @@ Simu::~Simu()
         vkDestroyDescriptorPool(_device->getLogicalDevice(), _descriptors.pool, nullptr);
 }
 
-void Simu::clean()
+auto Simu::generateGrid() -> void
 {
-    if(_view)
-        vkDestroyImageView(_device->getLogicalDevice(), _view, nullptr);
-    if(_image)
-        vmaDestroyImage(_device->getAllocator(), _image, _memory);
-    if(_sampler)
-        vkDestroySampler(_device->getLogicalDevice(), _sampler, nullptr);
+    auto count = _grid.size.x * _grid.size.y;
+    auto sizeInBytes = count * sizeof(GridCell);
+    _grid.data.resize(count);
+
+    for(auto& cell : _grid.data)
+    {
+        cell.velocity = glm::vec2(0.0f);
+        cell.externalForce = glm::vec2(0.0f);
+        cell.pressure = 1.0f;
+        cell.density = 1.0f;
+        cell.temperature = 20.0f;
+        cell.boundaryType = 0;
+    }
+
+    _grid.buffers.resize(2);
+    _grid.buffers[0] = _device->createBufferOnGPU(
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, sizeInBytes, _grid.data.data());
+    _grid.buffers[1] = _device->createBufferOnGPU(
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, sizeInBytes, _grid.data.data());
 }
 
 auto Simu::createUniformBuffers() -> void
 {
     VkDeviceSize bufferSize = sizeof(ComputeUniformBuffer);
-    _device->createBuffer(
+    _uniformBuffer = _device->createBuffer(
             VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
             VMA_MEMORY_USAGE_CPU_TO_GPU,
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-            bufferSize,
-            &_uboResources.buffer,
-            &_uboResources.memory);
+            bufferSize);
+}
 
-    VkDescriptorBufferInfo bufferInfo = {};
-    bufferInfo.buffer = _uboResources.buffer;
-    bufferInfo.offset = 0;
-    bufferInfo.range = VK_WHOLE_SIZE;
-    _uboResources.info = bufferInfo;
+auto Simu::createRenderTarget() -> void
+{
+    auto extent =
+            VkExtent2D{static_cast<uint32_t>(_grid.size.x), static_cast<uint32_t>(_grid.size.y)};
+    auto size = extent.width * extent.height * 4;
+
+    _texture = _device->createImageOnGPU(
+            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            size,
+            VK_FORMAT_R8G8B8A8_UNORM,
+            VK_IMAGE_LAYOUT_GENERAL,
+            extent,
+            nullptr);
+
+    _device->createImageView(
+            _texture.image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, &_texture.view);
+
+    _texture.sampler = _device->createSampler();
 }
 
 auto Simu::AllocateCommandBuffer(uint32_t count) -> void
@@ -73,143 +100,52 @@ auto Simu::AllocateCommandBuffer(uint32_t count) -> void
     }
 }
 
-auto Simu::createTexture() -> void
+auto Simu::setupDescriptors(uint32_t count) -> void
 {
-    VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT
-                              | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-
-    VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
-    _layout = VK_IMAGE_LAYOUT_GENERAL;
-    VkExtent2D extent = _extent;
-    VkDeviceSize size = extent.width * extent.height * 4;
-
-    std::vector<uint8_t> clearData(size);
-
-    VkBuffer stagingBuffer = VK_NULL_HANDLE;
-    VmaAllocation stagingMemory = VK_NULL_HANDLE;
-
-    _device->createBuffer(
-            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-            VMA_MEMORY_USAGE_CPU_ONLY,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            size,
-            &stagingBuffer,
-            &stagingMemory,
-            clearData.data());
-
-    _device->createImage(
-            usage,
-            VMA_MEMORY_USAGE_GPU_ONLY,
-            format,
-            VK_IMAGE_TILING_OPTIMAL,
-            extent,
-            &_image,
-            &_memory);
-
-    auto* cmdBuffer = _device->createCommandBuffer();
-
-    auto barrier = VkImageMemoryBarrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.srcAccessMask = 0;
-    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = _image;
-    barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-    vkCmdPipelineBarrier(
-            cmdBuffer,
-            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            0,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            1,
-            &barrier);
-
-    VkBufferImageCopy copyRegion = {};
-    copyRegion.bufferOffset = 0;
-    copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    copyRegion.imageSubresource.mipLevel = 0;
-    copyRegion.imageSubresource.baseArrayLayer = 0;
-    copyRegion.imageSubresource.layerCount = 1;
-    copyRegion.imageOffset = {0, 0, 0};
-    copyRegion.imageExtent.width = extent.width;
-    copyRegion.imageExtent.height = extent.height;
-    copyRegion.imageExtent.depth = 1;
-
-    vkCmdCopyBufferToImage(
-            cmdBuffer, stagingBuffer, _image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
-
-    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-
-    vkCmdPipelineBarrier(
-            cmdBuffer,
-            VK_PIPELINE_STAGE_TRANSFER_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            1,
-            &barrier);
-
-    _device->flushCommandBuffer(cmdBuffer, _device->getGraphicsQueue());
-    _device->createImageView(_image, format, VK_IMAGE_ASPECT_COLOR_BIT, &_view);
-    vmaDestroyBuffer(_device->getAllocator(), stagingBuffer, stagingMemory);
-
-    _sampler = _device->createSampler();
-
-    {
-        VkDescriptorImageInfo info = {};
-        info.sampler = _sampler;
-        info.imageView = _view;
-        info.imageLayout = _layout;
-        _imageInfo = info;
-    }
-}
-
-auto Simu::setupDescriptors() -> void
-{
-    auto gen = app::vk::DescriptorSetGenerator(_device->getLogicalDevice());
-
-    gen.addBinding(
+    _descGen->addBinding(
             0, // binding
             1, // count
             VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             VK_SHADER_STAGE_COMPUTE_BIT);
 
-    gen.addBinding(
+    _descGen->addBinding(
             1, // binding
+            1,
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            VK_SHADER_STAGE_COMPUTE_BIT);
+
+    _descGen->addBinding(
+            2, // binding
+            1,
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            VK_SHADER_STAGE_COMPUTE_BIT);
+
+    _descGen->addBinding(
+            3, // binding
             1,
             VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
             VK_SHADER_STAGE_COMPUTE_BIT);
 
-    _descriptors.pool = gen.generatePool(100);
-    _descriptors.layout = gen.generateLayout();
+    _descriptors.pool = _descGen->generatePool(100);
+    _descriptors.layout = _descGen->generateLayout();
+    _descriptors.sets.resize(count);
 
-    _descriptors.set = gen.generateSet(_descriptors.pool, _descriptors.layout);
-
+    for(auto& set : _descriptors.sets)
     {
-        gen.bind(_descriptors.set, 0, {_uboResources.info});
-        gen.bind(_descriptors.set, 1, {_imageInfo});
+        set = _descGen->generateSet(_descriptors.pool, _descriptors.layout);
+        _descGen->bind(set, 0, {_uniformBuffer.info});
+        _descGen->bind(set, 1, {_grid.buffers.at(0).info});
+        _descGen->bind(set, 2, {_grid.buffers.at(1).info});
+        _descGen->bind(set, 3, {_texture.getImageInfo()});
     }
 
-    gen.updateSetContents();
+    _descGen->updateSetContents();
 }
 
 auto Simu::createComputePipeline() -> void
 {
     auto shaderInfo =
-            _device->loadShaderFromFile("data/shaders/draw.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
+            _device->loadShaderFromFile("data/shaders/cfd.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
 
     VkPipelineLayoutCreateInfo layoutInfo = {};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -240,19 +176,68 @@ auto Simu::createComputePipeline() -> void
             nullptr,
             &_compute.calculate));
 
+    auto renderShaderInfo = _device->loadShaderFromFile(
+            "data/shaders/cfd_render.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
+    pipelineInfo.stage = renderShaderInfo;
+
+    VK_CHECK(vkCreateComputePipelines(
+            _device->getLogicalDevice(),
+            VK_NULL_HANDLE,
+            1,
+            &pipelineInfo,
+            nullptr,
+            &_compute.render));
+
     vkDestroyShaderModule(_device->getLogicalDevice(), shaderInfo.module, nullptr);
+    vkDestroyShaderModule(_device->getLogicalDevice(), renderShaderInfo.module, nullptr);
 }
 
-auto Simu::updateUniformBuffers(float time) -> void
+auto Simu::update(float time, uint32_t index) -> void
 {
     _ubo.color = glm::vec4(0.5f, 0.5f, 1.0f, 1.0f);
-    _ubo.size = glm::ivec2(_extent.width, _extent.height);
+    _ubo.gridSize = _grid.size;
     _ubo.time = time;
+    _uniformBuffer.copyTo(_ubo);
 
-    void* data = nullptr;
-    vmaMapMemory(_device->getAllocator(), _uboResources.memory, &data);
-    std::memcpy(data, &_ubo, sizeof(ComputeUniformBuffer));
-    vmaUnmapMemory(_device->getAllocator(), _uboResources.memory);
+    auto index1 = _grid.currentBufferIndex % 2;
+    auto index2 = (index1 + 1) % 2;
+    _grid.currentBufferIndex += 1;
+
+    auto descriptorWrites = std::array<VkWriteDescriptorSet, 2>{};
+
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = _descriptors.sets.at(index);
+    descriptorWrites[0].dstBinding = 1;
+    descriptorWrites[0].dstArrayElement = 0;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[0].pBufferInfo = &_grid.buffers.at(index1).info;
+
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].dstSet = _descriptors.sets.at(index);
+    descriptorWrites[1].dstBinding = 2;
+    descriptorWrites[1].dstArrayElement = 0;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[1].pBufferInfo = &_grid.buffers.at(index2).info;
+
+    vkUpdateDescriptorSets(
+            _device->getLogicalDevice(),
+            static_cast<uint32_t>(descriptorWrites.size()),
+            descriptorWrites.data(),
+            0,
+            nullptr);
+}
+
+auto Simu::getGridBufferInfo() const -> VkDescriptorBufferInfo
+{
+    auto readIdx = _grid.currentBufferIndex % 2;
+    return _grid.buffers.at(readIdx).info;
+}
+
+auto Simu::getRenderImageInfo() -> VkDescriptorImageInfo
+{
+    return _texture.getImageInfo();
 }
 
 auto Simu::recordCommandBuffer(uint32_t index) -> VkCommandBuffer
@@ -266,31 +251,6 @@ auto Simu::recordCommandBuffer(uint32_t index) -> VkCommandBuffer
     VK_CHECK(vkResetCommandBuffer(buf, 0));
     VK_CHECK(vkBeginCommandBuffer(buf, &beginInfo));
 
-    VkImageMemoryBarrier imageBarrier = {};
-    imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    imageBarrier.pNext = nullptr;
-    imageBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    imageBarrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    imageBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imageBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imageBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageBarrier.image = _image;
-    imageBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-
-    vkCmdPipelineBarrier(
-            buf,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            1,
-            &imageBarrier);
-
-    vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.calculate);
 
     vkCmdBindDescriptorSets(
             buf,
@@ -298,34 +258,23 @@ auto Simu::recordCommandBuffer(uint32_t index) -> VkCommandBuffer
             _compute.layout,
             0,
             1,
-            &_descriptors.set,
+            &_descriptors.sets.at(index),
             0,
             nullptr);
+
+    vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.calculate);
 
     uint32_t const workgroupSizeX = 16;
     uint32_t const workgroupSizeY = 16;
 
-    uint32_t const numGroupsX = (_extent.width + workgroupSizeX - 1) / workgroupSizeX;
-    uint32_t const numGroupsY = (_extent.height + workgroupSizeY - 1) / workgroupSizeY;
+    uint32_t const numGroupsX = (_grid.size.x + workgroupSizeX - 1) / workgroupSizeX;
+    uint32_t const numGroupsY = (_grid.size.y + workgroupSizeY - 1) / workgroupSizeY;
 
     vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
 
-    imageBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imageBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-    imageBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    imageBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.render);
 
-    vkCmdPipelineBarrier(
-            buf,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            1,
-            &imageBarrier);
+    vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
 
     VK_CHECK(vkEndCommandBuffer(buf));
 

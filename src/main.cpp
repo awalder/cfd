@@ -11,21 +11,21 @@ auto main() -> int
     log->info("Starting application");
 
     auto app = app::Application{};
-    try
-    {
         app.init();
         app.run();
-    }
-    catch(std::exception const& e)
-    {
-        log->error("Exception: {}", e.what());
-        return EXIT_FAILURE;
-    }
-    catch(...)
-    {
-        log->error("Unknown exception");
-        return EXIT_FAILURE;
-    }
+    // try
+    // {
+    // }
+    // catch(std::exception const& e)
+    // {
+    //     log->error("Exception: {}", e.what());
+    //     return EXIT_FAILURE;
+    // }
+    // catch(...)
+    // {
+    //     log->error("Unknown exception");
+    //     return EXIT_FAILURE;
+    // }
     // app.run();
     return EXIT_SUCCESS;
 }
