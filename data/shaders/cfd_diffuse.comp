@@ -1,0 +1,69 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(binding = 0) uniform UniformBufferObject
+{
+    vec4 color;
+    ivec2 gridSize;
+    float time;
+}
+ubo;
+
+struct GridCell
+{
+    vec2 velocity;
+    vec2 externalForce;
+    float pressure;
+    float density;
+    float temperature;
+    int boundaryType;
+};
+
+layout(std140, binding = 1) buffer Grid
+{
+    GridCell data[];
+};
+
+layout(push_constant) uniform PushConstants
+{
+    uint readBufferOffset;
+    uint writeBufferOffset;
+}
+pc;
+
+GridCell getCell(ivec2 pos, ivec2 offset)
+{
+    ivec2 neighborPos = pos + offset;
+    uint index = neighborPos.y * ubo.gridSize.x + neighborPos.x + pc.readBufferOffset;
+    return data[index];
+}
+
+void main()
+{
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    uint index = gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
+    uint readIndex = pc.readBufferOffset + index;
+    uint writeIndex = pc.writeBufferOffset + index;
+
+    if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
+    {
+        return;
+    }
+
+    if(data[readIndex].boundaryType != 0)
+    {
+        return;
+    }
+
+    float diffusionRate = 0.0001;
+
+    float a = ubo.time * diffusionRate * float(ubo.gridSize.x * ubo.gridSize.y);
+    data[writeIndex].density =
+            (data[readIndex].density
+             + a
+                       * (getCell(pos, ivec2(-1, 0)).density + getCell(pos, ivec2(1, 0)).density
+                          + getCell(pos, ivec2(0, -1)).density + getCell(pos, ivec2(0, 1)).density))
+            / (1.0 + 4.0 * a);
+}
+

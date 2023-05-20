@@ -6,7 +6,9 @@ if GLSLC.found()
   sources = [
     'simple.frag',
     'simple.vert',
-    'cfd.comp',
+    'cfd_source.comp',
+    'cfd_diffuse.comp',
+    'cfd_advect.comp',
     'cfd_render.comp',
   ]
 

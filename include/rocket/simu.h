@@ -29,6 +29,12 @@ struct ComputeUniformBuffer
     float time = 0;
 };
 
+struct ComputePushConstant
+{
+    uint32_t readBufferOffset = 0;
+    uint32_t writeBufferOffset = 0;
+};
+
 class Simu
 {
 public:
@@ -45,7 +51,7 @@ public:
     auto recordCommandBuffer(uint32_t index) -> VkCommandBuffer;
     auto update(float time, uint32_t index) -> void;
     [[nodiscard]] auto getGridSize() const -> glm::ivec2 { return _grid.size; }
-    [[nodiscard]] auto getGridBufferInfo() const -> VkDescriptorBufferInfo;
+    // [[nodiscard]] auto getGridBufferInfo() const -> VkDescriptorBufferInfo;
     [[nodiscard]] auto getRenderImageInfo() -> VkDescriptorImageInfo;
 
 private:
@@ -61,14 +67,8 @@ private:
     ComputeUniformBuffer _ubo;
     std::shared_ptr<app::vk::DescriptorSetGenerator> _descGen;
 
-    // VkExtent2D _extent{};
-    // VkImage _image = VK_NULL_HANDLE;
-    // VkImageView _view = VK_NULL_HANDLE;
-    // VkImageLayout _layout{};
-    // VmaAllocation _memory = VK_NULL_HANDLE;
-    // VkDescriptorImageInfo _imageInfo{};
-    // VkSampler _sampler = VK_NULL_HANDLE;
     vk::Buffer _uniformBuffer;
+    ComputePushConstant _pushConstant;
 
     // Texture for compute to draw on
     vk::Texture _texture;
@@ -77,18 +77,28 @@ private:
     {
         std::vector<GridCell> data;
 
-        // Two buffers, alternating between these after each update
-        std::size_t currentBufferIndex = 0;
-        std::vector<vk::Buffer> buffers;
-        glm::ivec2 size = {1024, 1024};
+        uint32_t readBufferIndex = 0;
+        uint32_t writeBufferIndex = 0;
+        // This buffer contains data for both read and write. alternating between every frame read
+        // and write indices are swapped.
+        vk::Buffer buffers;
+        glm::ivec2 size = {256, 256};
     } _grid;
 
     struct
     {
         VkPipelineLayout layout = VK_NULL_HANDLE;
-        VkPipeline calculate = VK_NULL_HANDLE;
+
+        // density step
+        VkPipeline source = VK_NULL_HANDLE;
+        VkPipeline diffuse = VK_NULL_HANDLE;
+        VkPipeline advect = VK_NULL_HANDLE;
+
+        // velocity step
+
+        // render
         VkPipeline render = VK_NULL_HANDLE;
-        std::vector<VkCommandBuffer> commandBuffers{};
+        std::vector<VkCommandBuffer> commandBuffers;
     } _compute;
 
     struct

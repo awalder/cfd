@@ -1,3 +1,4 @@
 builddir*
 .cache/
 compile_commands.json
+*.csv

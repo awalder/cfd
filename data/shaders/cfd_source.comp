@@ -1,0 +1,79 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(binding = 0) uniform UniformBufferObject
+{
+    vec4 color;
+    ivec2 gridSize;
+    float time;
+}
+ubo;
+
+struct GridCell
+{
+    vec2 velocity;
+    vec2 externalForce;
+    float pressure;
+    float density;
+    float temperature;
+    int boundaryType;
+};
+
+layout(std140, binding = 1) buffer Grid
+{
+    GridCell data[];
+};
+
+layout(push_constant) uniform PushConstants
+{
+    uint readBufferOffset;
+    uint writeBufferOffset;
+}
+pc;
+
+GridCell getCell(ivec2 pos, ivec2 offset)
+{
+    ivec2 neighborPos = pos + offset;
+    uint index = neighborPos.y * ubo.gridSize.x + neighborPos.x + pc.readBufferOffset;
+    return data[index];
+}
+
+void main()
+{
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    uint index = gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
+    uint readIndex = pc.readBufferOffset + index;
+    uint writeIndex = pc.writeBufferOffset + index;
+
+    if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
+    {
+        return;
+    }
+
+    if(data[readIndex].boundaryType != 0)
+    {
+        return;
+    }
+
+    // Add source to the density
+    float source = 0.0;  // initialize source term to 0
+    float dt = ubo.time; // replace with your actual time step
+
+    // Define the position and size of the source square
+    ivec2 sourcePos = ubo.gridSize / 2; // middle of the grid
+    int sourceSize = 10;                // 10x10 square
+
+    // float density = data[readIndex].density;
+    float density = 0.0;
+
+    // Check if the current cell is within the source square
+    if(abs(pos.x - sourcePos.x) < sourceSize / 2 && abs(pos.y - sourcePos.y) < sourceSize / 2)
+    {
+        source = 0.1;
+        density += dt * source;
+        density = clamp(density, 0.0, 100);
+    }
+
+    data[writeIndex].density += density;
+}
