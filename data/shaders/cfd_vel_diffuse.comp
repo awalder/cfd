@@ -1,0 +1,73 @@
+#version 450
+
+#include "common.glsl"
+
+void main()
+{
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    uint index = gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
+    uint readIndex = pc.readBufferOffset + index;
+    uint writeIndex = pc.writeBufferOffset + index;
+    uint tempIndex = pc.tempBufferOffset + index;
+    int boundary = data[readIndex].boundary.x;
+
+    vec2 velocity = vec2(0.0);
+    vec2 velocity0 = data[tempIndex].velocity;
+
+    if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
+    {
+        return;
+    }
+
+    if(boundary == 0)
+    {
+        float dt = ubo.time;
+        float viscosity = 0.0000001;
+        float a = dt * viscosity * float(ubo.gridSize.x * ubo.gridSize.y);
+
+        velocity = (velocity0
+                    + a *
+                        (getCell(pos, ivec2(-1, 0)).velocity + getCell(pos, ivec2(1, 0)).velocity
+                       + getCell(pos, ivec2(0, -1)).velocity + getCell(pos, ivec2(0, 1)).velocity))
+                   / (1.0 + 4.0 * a);
+    }
+
+    barrier();
+
+    // Handle boundary conditions
+    if(pos.x == 0)
+    {
+        velocity.x = -getCell(pos, ivec2(1, 0)).velocity.x;
+    }
+    else if(pos.x == ubo.gridSize.x - 1)
+    {
+        velocity.x = -getCell(pos, ivec2(-1, 0)).velocity.x;
+    }
+    else if(pos.y == 0)
+    {
+        velocity.y = -getCell(pos, ivec2(0, 1)).velocity.y;
+    }
+    else if(pos.y == ubo.gridSize.y - 1)
+    {
+        velocity.y = -getCell(pos, ivec2(0, -1)).velocity.y;
+    }
+    else if(pos.x == 0 && pos.y == 0) // top-left corner
+    {
+        velocity = (getCell(pos, ivec2(1, 0)).velocity + getCell(pos, ivec2(0, 1)).velocity) / 2.0;
+    }
+    else if(pos.x == ubo.gridSize.x - 1 && pos.y == 0) // top-right corner
+    {
+        velocity = (getCell(pos, ivec2(-1, 0)).velocity + getCell(pos, ivec2(0, 1)).velocity) / 2.0;
+    }
+    else if(pos.x == 0 && pos.y == ubo.gridSize.y - 1) // bottom-left corner
+    {
+        velocity = (getCell(pos, ivec2(1, 0)).velocity + getCell(pos, ivec2(0, -1)).velocity) / 2.0;
+    }
+    else if(pos.x == ubo.gridSize.x - 1 && pos.y == ubo.gridSize.y - 1) // bottom-right corner
+    {
+        velocity =
+                (getCell(pos, ivec2(-1, 0)).velocity + getCell(pos, ivec2(0, -1)).velocity) / 2.0;
+    }
+
+    data[writeIndex].velocity = velocity;
+}

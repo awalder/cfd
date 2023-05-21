@@ -1,0 +1,39 @@
+#version 450
+
+#include "common.glsl"
+
+void main()
+{
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    uint index =
+            gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
+    uint readIndex = pc.readBufferOffset + index;
+    uint writeIndex = pc.writeBufferOffset + index;
+
+    if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
+    {
+        return;
+    }
+
+    if(data[readIndex].boundary.x != 0)
+    {
+        return;
+    }
+
+    // Add forces to the velocity
+    vec2 force = vec2(0.01, -0.04); // simulate gravity
+    // vec2 force = vec2(0.0); // simulate gravity
+    float dt = ubo.time;    // replace with your actual time step
+
+    // Define the position and size of the force square
+    ivec2 forcePos = ubo.gridSize / 2; // middle of the grid
+    int forceSize = 10;                // 10x10 square
+
+    // Check if the current cell is within the force square
+    // if(ubo.enabled == 1 && abs(pos.x - forcePos.x) < forceSize / 2
+    //    && abs(pos.y - forcePos.y) < forceSize / 2)
+    // {
+    //     force = vec2(0.0, 10.0);
+    // }
+    data[writeIndex].velocity += dt * force;
+}

@@ -2,7 +2,6 @@
 
 layout(binding = 0) uniform UniformBufferObject
 {
-    ivec2 gridSize;
     float time;
 }
 ubo;

@@ -36,7 +36,8 @@ auto Application::init() -> void
     _windowManager = std::make_unique<WindowManager>(_appContext);
     _windowManager->setup();
 
-    _vkContext = std::make_unique<vk::Context>(_appContext, _windowManager->getWindow());
+    _vkContext = std::make_unique<vk::Context>(
+            _appContext, _windowManager->getWindow());
     _vkContext->init(_windowManager->getSwapchainExtent());
 }
 
@@ -47,7 +48,7 @@ auto Application::run() -> void
     {
         auto timer = utils::Timer<std::chrono::duration<double>>{};
         _windowManager->pollEvents();
-        _vkContext->renderFrame(static_cast<float>(_apprunTime.count()));
+        _vkContext->renderFrame(static_cast<float>(_frameTime.count()), static_cast<float>(_apprunTime.count()));
 
         _frameTime = timer.elapsed();
         _apprunTime += _frameTime;

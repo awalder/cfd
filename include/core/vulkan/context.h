@@ -4,13 +4,13 @@
 #include "common/appcontext.h"
 #include "core/confighandler.h"
 #include "core/vulkan/device.h"
+#include "core/vulkan/vktypes.h"
 #include "entt/signal/dispatcher.hpp"
 #include "event/commonevents.h"
-#include "rocket/simu.h"
-#include "core/vulkan/vktypes.h"
 #include "event/sub.h"
 #include "logs/log.h"
 #include "model/vertex.h"
+#include "rocket/simu.h"
 #include "vkmemalloc.h"
 #include "vulkan/vulkan.h"
 
@@ -33,7 +33,7 @@ public:
     auto operator=(Context&&) -> Context& = delete;
 
     auto init(VkExtent2D swapchainExtent) -> void;
-    auto renderFrame(float dt) -> void;
+    auto renderFrame(float dt, float elapsed) -> void;
     auto deviceWaitIdle() -> void;
 
     auto onEvent(event::FrameBufferResizeEvent const& event) -> void;
@@ -96,7 +96,6 @@ private:
 
     struct UniformBufferObject
     {
-        glm::vec2 gridSize;
         float time;
     };
 

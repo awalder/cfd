@@ -1,0 +1,83 @@
+#version 450
+
+#include "common.glsl"
+
+void main()
+{
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    uint index = gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
+    uint readIndex = pc.readBufferOffset + index;
+    uint writeIndex = pc.writeBufferOffset + index;
+
+    float divergence = 0.0;
+    float pressure = 0.0;
+
+    if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
+    {
+        return;
+    }
+
+    if(data[readIndex].boundary.x == 0)
+    {
+        float h = 1.0 / float(ubo.gridSize.x); // assuming the grid is square
+        GridCell right = getCell(pos, ivec2(1, 0));
+        GridCell left = getCell(pos, ivec2(-1, 0));
+        GridCell top = getCell(pos, ivec2(0, -1));
+        GridCell bottom = getCell(pos, ivec2(0, 1));
+
+        divergence =
+                -0.5 * h
+                * ((right.velocity.x - left.velocity.x) + (top.velocity.y - bottom.velocity.y));
+    }
+
+    barrier();
+
+    if(pos.x == 0)
+    {
+        divergence = getCell(pos, ivec2(1, 0)).divergence;
+        pressure = getCell(pos, ivec2(1, 0)).pressure;
+    }
+    else if(pos.x == ubo.gridSize.x - 1)
+    {
+        divergence = getCell(pos, ivec2(-1, 0)).divergence;
+        pressure = getCell(pos, ivec2(-1, 0)).pressure;
+    }
+    else if(pos.y == 0)
+    {
+        divergence = getCell(pos, ivec2(0, 1)).divergence;
+        pressure = getCell(pos, ivec2(0, 1)).pressure;
+    }
+    else if(pos.y == ubo.gridSize.y - 1)
+    {
+        divergence = getCell(pos, ivec2(0, -1)).divergence;
+        pressure = getCell(pos, ivec2(0, -1)).pressure;
+    }
+    else if(pos.x == 0 && pos.y == 0) // top-left corner
+    {
+        divergence =
+                (getCell(pos, ivec2(1, 0)).divergence + getCell(pos, ivec2(0, 1)).divergence) / 2.0;
+        pressure = (getCell(pos, ivec2(1, 0)).pressure + getCell(pos, ivec2(0, 1)).pressure) / 2.0;
+    }
+    else if(pos.x == ubo.gridSize.x - 1 && pos.y == 0) // top-right corner
+    {
+        divergence = (getCell(pos, ivec2(-1, 0)).divergence + getCell(pos, ivec2(0, 1)).divergence)
+                     / 2.0;
+        pressure = (getCell(pos, ivec2(-1, 0)).pressure + getCell(pos, ivec2(0, 1)).pressure) / 2.0;
+    }
+    else if(pos.x == 0 && pos.y == ubo.gridSize.y - 1) // bottom-left corner
+    {
+        divergence = (getCell(pos, ivec2(1, 0)).divergence + getCell(pos, ivec2(0, -1)).divergence)
+                     / 2.0;
+        pressure = (getCell(pos, ivec2(1, 0)).pressure + getCell(pos, ivec2(0, -1)).pressure) / 2.0;
+    }
+    else if(pos.x == ubo.gridSize.x - 1 && pos.y == ubo.gridSize.y - 1) // bottom-right corner
+    {
+        divergence = (getCell(pos, ivec2(-1, 0)).divergence + getCell(pos, ivec2(0, -1)).divergence)
+                     / 2.0;
+        pressure =
+                (getCell(pos, ivec2(-1, 0)).pressure + getCell(pos, ivec2(0, -1)).pressure) / 2.0;
+    }
+
+    data[writeIndex].divergence = divergence;
+    data[writeIndex].pressure = pressure;
+}

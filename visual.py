@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Read the CSV data
-data = pd.read_csv('data.csv')
+data = pd.read_csv('data.csv', skipinitialspace=True)
 
 # Plot the data
 plt.figure(figsize=(10, 8))

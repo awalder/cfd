@@ -1,0 +1,70 @@
+#version 450
+
+#include "common.glsl"
+
+void main()
+{
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    uint index = gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
+    uint readIndex = pc.readBufferOffset + index;
+    uint writeIndex = pc.writeBufferOffset + index;
+    vec2 velocity = data[readIndex].velocity;
+
+    if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
+    {
+        return;
+    }
+
+    if(data[readIndex].boundary.x == 0)
+    {
+        // Get the neighboring cells
+        GridCell left = getCell(pos, ivec2(-1, 0));
+        GridCell right = getCell(pos, ivec2(1, 0));
+        GridCell top = getCell(pos, ivec2(0, -1));
+        GridCell bottom = getCell(pos, ivec2(0, 1));
+
+        // Update the velocity based on the pressure difference
+        float h = 1.0 / ubo.gridSize.x; // Assuming a square grid
+        h = 0.10;
+        velocity.x -= 0.5 * (right.pressure - left.pressure) / h;
+        velocity.y -= 0.5 * (top.pressure - bottom.pressure) / h;
+    }
+
+    barrier();
+
+    if(pos.x == 0)
+    {
+        velocity.x = -getCell(pos, ivec2(1, 0)).velocity.x;
+    }
+    else if(pos.x == ubo.gridSize.x - 1)
+    {
+        velocity.x = -getCell(pos, ivec2(-1, 0)).velocity.x;
+    }
+    else if(pos.y == 0)
+    {
+        velocity.y = -getCell(pos, ivec2(0, 1)).velocity.y;
+    }
+    else if(pos.y == ubo.gridSize.y - 1)
+    {
+        velocity.y = -getCell(pos, ivec2(0, -1)).velocity.y;
+    }
+    else if(pos.x == 0 && pos.y == 0) // top-left corner
+    {
+        velocity = (getCell(pos, ivec2(1, 0)).velocity + getCell(pos, ivec2(0, 1)).velocity) / 2.0;
+    }
+    else if(pos.x == ubo.gridSize.x - 1 && pos.y == 0) // top-right corner
+    {
+        velocity = (getCell(pos, ivec2(-1, 0)).velocity + getCell(pos, ivec2(0, 1)).velocity) / 2.0;
+    }
+    else if(pos.x == 0 && pos.y == ubo.gridSize.y - 1) // bottom-left corner
+    {
+        velocity = (getCell(pos, ivec2(1, 0)).velocity + getCell(pos, ivec2(0, -1)).velocity) / 2.0;
+    }
+    else if(pos.x == ubo.gridSize.x - 1 && pos.y == ubo.gridSize.y - 1) // bottom-right corner
+    {
+        velocity =
+                (getCell(pos, ivec2(-1, 0)).velocity + getCell(pos, ivec2(0, -1)).velocity) / 2.0;
+    }
+    // Write the updated velocity to the output buffer
+    data[writeIndex].velocity = velocity;
+}

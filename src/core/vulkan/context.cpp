@@ -108,7 +108,7 @@ auto Context::onEvent(event::FrameBufferResizeEvent const& event) -> void
     _frameBufferResized = true;
 }
 
-void Context::renderFrame(float dt)
+void Context::renderFrame(float dt, float elapsed)
 {
     // Compute stage
 
@@ -130,7 +130,7 @@ void Context::renderFrame(float dt)
         assert(false);
     }
 
-    _simu->update(dt, imageIndex);
+    _simu->update(dt, elapsed, imageIndex);
 
     // TODO test if I can use _frameindex to work with commandbuffers
     //
@@ -868,7 +868,6 @@ void Context::update(float dt, uint32_t imageIndex)
 {
     auto ubo = UniformBufferObject{};
 
-    ubo.gridSize = _simu->getGridSize();
     ubo.time = dt;
 
     auto& buffer = _uniformBuffer[_frameIndex];

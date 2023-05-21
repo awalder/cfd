@@ -1,5 +1,6 @@
 #version 450
 
+// #include "common.glsl"
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 layout(binding = 0) uniform UniformBufferObject
@@ -14,10 +15,11 @@ struct GridCell
 {
     vec2 velocity;
     vec2 externalForce;
+    ivec4 boundary;
+    float divergence;
     float pressure;
     float density;
     float temperature;
-    int boundaryType;
 };
 
 layout(std140, binding = 1) buffer Grid
@@ -29,8 +31,7 @@ layout(push_constant) uniform PushConstants
 {
     uint readBufferOffset;
     uint writeBufferOffset;
-}
-pc;
+} pc;
 
 GridCell getCell(ivec2 pos, ivec2 offset)
 {
@@ -38,6 +39,7 @@ GridCell getCell(ivec2 pos, ivec2 offset)
     uint index = neighborPos.y * ubo.gridSize.x + neighborPos.x + pc.readBufferOffset;
     return data[index];
 }
+
 
 void main()
 {
@@ -50,20 +52,4 @@ void main()
     {
         return;
     }
-
-    if(data[readIndex].boundaryType != 0)
-    {
-        return;
-    }
-
-    float diffusionRate = 0.0001;
-
-    float a = ubo.time * diffusionRate * float(ubo.gridSize.x * ubo.gridSize.y);
-    data[writeIndex].density =
-            (data[readIndex].density
-             + a
-                       * (getCell(pos, ivec2(-1, 0)).density + getCell(pos, ivec2(1, 0)).density
-                          + getCell(pos, ivec2(0, -1)).density + getCell(pos, ivec2(0, 1)).density))
-            / (1.0 + 4.0 * a);
 }
-

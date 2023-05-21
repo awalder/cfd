@@ -14,7 +14,7 @@ Simu::Simu(vk::Device* device, uint32_t imageCount) : _device(device)
     AllocateCommandBuffer(imageCount);
     setupDescriptors(imageCount);
     createComputePipeline();
-    update(0.0f, 0);
+    update(0.0f, 0.0f, 0);
 }
 
 Simu::~Simu()
@@ -24,12 +24,27 @@ Simu::~Simu()
 
     if(_compute.layout)
         vkDestroyPipelineLayout(_device->getLogicalDevice(), _compute.layout, nullptr);
-    if(_compute.source)
-        vkDestroyPipeline(_device->getLogicalDevice(), _compute.source, nullptr);
-    if(_compute.diffuse)
-        vkDestroyPipeline(_device->getLogicalDevice(), _compute.diffuse, nullptr);
-    if(_compute.advect)
-        vkDestroyPipeline(_device->getLogicalDevice(), _compute.advect, nullptr);
+    if(_compute.d_source)
+        vkDestroyPipeline(_device->getLogicalDevice(), _compute.d_source, nullptr);
+    if(_compute.d_diffuse_prep)
+        vkDestroyPipeline(_device->getLogicalDevice(), _compute.d_diffuse_prep, nullptr);
+    if(_compute.d_diffuse)
+        vkDestroyPipeline(_device->getLogicalDevice(), _compute.d_diffuse, nullptr);
+    if(_compute.d_advect)
+        vkDestroyPipeline(_device->getLogicalDevice(), _compute.d_advect, nullptr);
+    if(_compute.v_forces)
+        vkDestroyPipeline(_device->getLogicalDevice(), _compute.v_forces, nullptr);
+    if(_compute.v_diffuse)
+        vkDestroyPipeline(_device->getLogicalDevice(), _compute.v_diffuse, nullptr);
+    if(_compute.v_advect)
+        vkDestroyPipeline(_device->getLogicalDevice(), _compute.v_advect, nullptr);
+    if(_compute.v_project)
+        vkDestroyPipeline(_device->getLogicalDevice(), _compute.v_project, nullptr);
+    if(_compute.v_divergence)
+        vkDestroyPipeline(_device->getLogicalDevice(), _compute.v_divergence, nullptr);
+    if(_compute.v_update)
+        vkDestroyPipeline(_device->getLogicalDevice(), _compute.v_update, nullptr);
+
     if(_compute.render)
         vkDestroyPipeline(_device->getLogicalDevice(), _compute.render, nullptr);
 
@@ -42,8 +57,9 @@ Simu::~Simu()
 
 auto Simu::generateGrid() -> void
 {
-    // allocating size for TWO buffers (current and next)
-    auto count = _grid.size.x * _grid.size.y * 2;
+    // allocating size for TWO buffers (current and next) and one additional
+    // buffer for temporary memory space
+    auto count = _grid.size.x * _grid.size.y * 3;
     auto sizeInBytes = count * sizeof(GridCell);
     _grid.data.resize(count);
 
@@ -55,20 +71,21 @@ auto Simu::generateGrid() -> void
             auto& cell = _grid.data.at(i * _grid.size.x + j);
             cell.velocity = glm::vec2(0.0f);
             cell.externalForce = glm::vec2(0.0f);
+            cell.boundary = glm::ivec4(0.0f);
+            cell.divergence = 0.0f;
             cell.pressure = 1.0f;
-            cell.density = 1.0f;
+            cell.density = 0.0f;
             cell.temperature = 20.0f;
-            cell.boundaryType = 0;
 
             // Top or bottom boundary (horizontal)
             if(i == 0 || i == _grid.size.y - 1)
             {
-                cell.boundaryType = 1;
+                cell.boundary.x = 1;
             }
             // Left or right boundary (vertical)
             else if(j == 0 || j == _grid.size.x - 1)
             {
-                cell.boundaryType = 2;
+                cell.boundary.x = 2;
             }
         }
     }
@@ -82,26 +99,29 @@ auto Simu::generateGrid() -> void
             auto& cell = _grid.data.at(i * _grid.size.x + j + offset);
             cell.velocity = glm::vec2(0.0f);
             cell.externalForce = glm::vec2(0.0f);
+            cell.boundary = glm::ivec4(0.0f);
+            cell.divergence = 0.0f;
             cell.pressure = 1.0f;
-            cell.density = 1.0f;
+            cell.density = 0.0f;
             cell.temperature = 20.0f;
-            cell.boundaryType = 0;
 
             // Top or bottom boundary (horizontal)
             if(i == 0 || i == _grid.size.y - 1)
             {
-                cell.boundaryType = 1;
+                cell.boundary.x = 1;
             }
             // Left or right boundary (vertical)
             else if(j == 0 || j == _grid.size.x - 1)
             {
-                cell.boundaryType = 2;
+                cell.boundary.x = 2;
             }
         }
     }
 
     _grid.buffers = _device->createBufferOnGPU(
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, sizeInBytes, _grid.data.data());
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            sizeInBytes,
+            _grid.data.data());
 }
 
 auto Simu::createUniformBuffers() -> void
@@ -207,112 +227,40 @@ auto Simu::createComputePipeline() -> void
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = 0;
 
-    {
-        auto shaderInfo = _device->loadShaderFromFile(
-                "data/shaders/cfd_source.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
+    auto addPipeline = [&](std::string const& shaderName, VkPipeline& pipeline) {
+        auto shaderInfo = _device->loadShaderFromFile(shaderName, VK_SHADER_STAGE_COMPUTE_BIT);
 
         pipelineInfo.stage = shaderInfo;
         VK_CHECK(vkCreateComputePipelines(
-                _device->getLogicalDevice(),
-                VK_NULL_HANDLE,
-                1,
-                &pipelineInfo,
-                nullptr,
-                &_compute.source));
+                _device->getLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline));
 
         vkDestroyShaderModule(_device->getLogicalDevice(), shaderInfo.module, nullptr);
-    }
+    };
 
-    {
-        auto shaderInfo = _device->loadShaderFromFile(
-                "data/shaders/cfd_diffuse.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
+    addPipeline("data/shaders/cfd_dens_source.comp.spv", _compute.d_source);
+    addPipeline("data/shaders/cfd_dens_diffuse_prep.comp.spv", _compute.d_diffuse_prep);
+    addPipeline("data/shaders/cfd_dens_diffuse.comp.spv", _compute.d_diffuse);
+    addPipeline("data/shaders/cfd_dens_advect.comp.spv", _compute.d_advect);
 
-        pipelineInfo.stage = shaderInfo;
-        VK_CHECK(vkCreateComputePipelines(
-                _device->getLogicalDevice(),
-                VK_NULL_HANDLE,
-                1,
-                &pipelineInfo,
-                nullptr,
-                &_compute.diffuse));
+    addPipeline("data/shaders/cfd_vel_forces.comp.spv", _compute.v_forces);
+    addPipeline("data/shaders/cfd_vel_diffuse.comp.spv", _compute.v_diffuse);
+    addPipeline("data/shaders/cfd_vel_advect.comp.spv", _compute.v_advect);
+    addPipeline("data/shaders/cfd_vel_project.comp.spv", _compute.v_project);
+    addPipeline("data/shaders/cfd_vel_divergence.comp.spv", _compute.v_divergence);
+    addPipeline("data/shaders/cfd_vel_update.comp.spv", _compute.v_update);
 
-        vkDestroyShaderModule(_device->getLogicalDevice(), shaderInfo.module, nullptr);
-    }
-
-    {
-        auto shaderInfo = _device->loadShaderFromFile(
-                "data/shaders/cfd_advect.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
-
-        pipelineInfo.stage = shaderInfo;
-        VK_CHECK(vkCreateComputePipelines(
-                _device->getLogicalDevice(),
-                VK_NULL_HANDLE,
-                1,
-                &pipelineInfo,
-                nullptr,
-                &_compute.advect));
-
-        vkDestroyShaderModule(_device->getLogicalDevice(), shaderInfo.module, nullptr);
-    }
-    {
-        auto shaderInfo = _device->loadShaderFromFile(
-                "data/shaders/cfd_render.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
-        pipelineInfo.stage = shaderInfo;
-
-        VK_CHECK(vkCreateComputePipelines(
-                _device->getLogicalDevice(),
-                VK_NULL_HANDLE,
-                1,
-                &pipelineInfo,
-                nullptr,
-                &_compute.render));
-
-        vkDestroyShaderModule(_device->getLogicalDevice(), shaderInfo.module, nullptr);
-    }
+    addPipeline("data/shaders/cfd_render.comp.spv", _compute.render);
 }
 
-auto Simu::update(float time, uint32_t index) -> void
+auto Simu::update(float time, float elapsed, uint32_t index) -> void
 {
     _ubo.color = glm::vec4(0.5f, 0.5f, 1.0f, 1.0f);
     _ubo.gridSize = _grid.size;
     _ubo.time = time;
+    _ubo.enabled = static_cast<int>(elapsed < 10.0f);
+
     _uniformBuffer.copyTo(_ubo);
-
-    // auto index1 = _grid.currentBufferIndex % 2;
-    // auto index2 = (index1 + 1) % 2;
-    // _grid.currentBufferIndex += 1;
-
-    // auto descriptorWrites = std::array<VkWriteDescriptorSet, 2>{};
-
-    // descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    // descriptorWrites[0].dstSet = _descriptors.sets.at(index);
-    // descriptorWrites[0].dstBinding = 1;
-    // descriptorWrites[0].dstArrayElement = 0;
-    // descriptorWrites[0].descriptorCount = 1;
-    // descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    // descriptorWrites[0].pBufferInfo = &_grid.buffers.at(index1).info;
-    //
-    // descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    // descriptorWrites[1].dstSet = _descriptors.sets.at(index);
-    // descriptorWrites[1].dstBinding = 2;
-    // descriptorWrites[1].dstArrayElement = 0;
-    // descriptorWrites[1].descriptorCount = 1;
-    // descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    // descriptorWrites[1].pBufferInfo = &_grid.buffers.at(index2).info;
-    //
-    // vkUpdateDescriptorSets(
-    //         _device->getLogicalDevice(),
-    //         static_cast<uint32_t>(descriptorWrites.size()),
-    //         descriptorWrites.data(),
-    //         0,
-    //         nullptr);
 }
-
-// auto Simu::getGridBufferInfo() const -> VkDescriptorBufferInfo
-// {
-// auto readIdx = _grid.currentBufferIndex % 2;
-// return _grid.buffers.at(readIdx).info;
-// }
 
 auto Simu::getRenderImageInfo() -> VkDescriptorImageInfo
 {
@@ -325,15 +273,70 @@ auto Simu::recordCommandBuffer(uint32_t index) -> VkCommandBuffer
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 
+    auto barrierInfo = VkBufferMemoryBarrier{};
+    barrierInfo.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barrierInfo.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barrierInfo.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    barrierInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrierInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrierInfo.buffer = _grid.buffers.buffer;
+    barrierInfo.offset = 0;
+    barrierInfo.size = VK_WHOLE_SIZE;
+
     uint32_t N = _grid.size.x * _grid.size.y;
-    static auto pc = ComputePushConstant{.readBufferOffset = 0, .writeBufferOffset = N};
+    static auto pc = ComputePushConstant{
+            .readBufferOffset = 0, .writeBufferOffset = N, .tempBufferOffset = 2 * N};
     static bool toggle = true;
 
     auto swap = [&]() {
-        toggle = !toggle;
         pc.readBufferOffset = toggle ? 0 : N;
         pc.writeBufferOffset = toggle ? N : 0;
+        toggle = !toggle;
     };
+
+    auto barrier = [&](VkCommandBuffer buf) {
+        vkCmdPipelineBarrier(
+                buf,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0,
+                0,
+                nullptr,
+                1,
+                &barrierInfo,
+                0,
+                nullptr);
+    };
+
+    auto pushConstants = [&](VkCommandBuffer buf) {
+        vkCmdPushConstants(
+                buf,
+                _compute.layout,
+                VK_SHADER_STAGE_COMPUTE_BIT,
+                0,
+                sizeof(ComputePushConstant),
+                &pc);
+    };
+
+    // auto copyBufferToTemp = [&](VkCommandBuffer buf, uint32_t offset) {
+    //     VkBufferCopy copyRegion = {};
+    //     copyRegion.srcOffset = offset;
+    //     copyRegion.dstOffset = pc.tempBufferOffset;
+    //     copyRegion.size = N;
+    //     assert(copyRegion.srcOffset != copyRegion.dstOffset);
+    //
+    //     vkCmdCopyBuffer(buf, _grid.buffers.buffer, _grid.buffers.buffer, 1, &copyRegion);
+    // };
+
+    // auto copyBufferToRead = [&](VkCommandBuffer buf) {
+    //     VkBufferCopy copyRegion = {};
+    //     copyRegion.srcOffset = pc.tempBufferOffset;
+    //     copyRegion.dstOffset = pc.readBufferOffset;
+    //     copyRegion.size = N;
+    //     assert(copyRegion.srcOffset != copyRegion.dstOffset);
+    //
+    //     vkCmdCopyBuffer(buf, _grid.buffers.buffer, _grid.buffers.buffer, 1, &copyRegion);
+    // };
 
     uint32_t const workgroupSizeX = 16;
     uint32_t const workgroupSizeY = 16;
@@ -355,32 +358,121 @@ auto Simu::recordCommandBuffer(uint32_t index) -> VkCommandBuffer
             0,
             nullptr);
 
-    // source
-    vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.source);
-    vkCmdPushConstants(
-            buf, _compute.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstant), &pc);
-    vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
-    swap();
-
-    // diffuse
-    for(int i = 0; i < 10; ++i)
-    {
-        vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.diffuse);
-        vkCmdPushConstants(
-                buf, _compute.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                sizeof(ComputePushConstant), &pc);
-
+    { // add source
+        vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.d_source);
+        pushConstants(buf);
         vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
-        // swap();
+        barrier(buf);
+        swap();
     }
-    swap();
+
+    {
+            // VkBufferCopy copyRegion = {};
+            // copyRegion.srcOffset = pc.readBufferOffset;
+            // copyRegion.dstOffset = pc.tempBufferOffset;
+            // copyRegion.size = N;
+            // assert(copyRegion.srcOffset != copyRegion.dstOffset);
+            //
+            // vkCmdCopyBuffer(buf, _grid.buffers.buffer, _grid.buffers.buffer, 1, &copyRegion);
+            // copyBufferToTemp(buf, pc.readBufferOffset);
+            // barrier(buf);
+            //     copyBufferToRead(buf);
+            //     barrier(buf);
+    } {
+        // density diffuse prep
+        vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.d_diffuse_prep);
+        pushConstants(buf);
+        vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
+        barrier(buf);
+    } // not doing swap because not writing to write-buffer
+
+    {
+        // density diffuse
+        vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.d_diffuse);
+        for(int i = 0; i < 20; ++i)
+        {
+            pushConstants(buf);
+            vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
+            barrier(buf);
+            swap();
+        }
+    }
 
     // advect
-    vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.advect);
-    vkCmdPushConstants(
-            buf, _compute.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstant), &pc);
-    vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
-    swap();
+    {
+        vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.d_advect);
+        pushConstants(buf);
+        vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
+        barrier(buf);
+        swap();
+    }
+
+    // add_forces
+    {
+        vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.v_forces);
+        pushConstants(buf);
+        vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
+        barrier(buf);
+        swap();
+    }
+
+    {
+        // density diffuse prep
+        vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.d_diffuse_prep);
+        pushConstants(buf);
+        vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
+        barrier(buf);
+    } // not doing swap because not writing to write-buffer
+
+    // velocity diffuse
+    {
+        vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.v_diffuse);
+        for(int i = 0; i < 20; ++i)
+        {
+            pushConstants(buf);
+            vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
+            barrier(buf);
+            swap();
+        }
+    }
+
+    // // divergence
+    {
+        vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.v_divergence);
+        pushConstants(buf);
+        vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
+        barrier(buf);
+        swap();
+    }
+
+    // pressure estimation
+    {
+        vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.v_project);
+        for(int i = 0; i < 10; ++i)
+        {
+            pushConstants(buf);
+            vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
+            barrier(buf);
+            swap();
+        }
+    }
+
+    // update velocity
+    {
+        vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.v_update);
+        pushConstants(buf);
+        vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
+        barrier(buf);
+        swap();
+    }
+
+    {
+        vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.v_advect);
+        pushConstants(buf);
+        vkCmdDispatch(buf, numGroupsX, numGroupsY, 1);
+        barrier(buf);
+        swap();
+    }
 
     // Render !!
     vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.render);

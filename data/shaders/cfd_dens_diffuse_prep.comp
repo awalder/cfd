@@ -1,0 +1,22 @@
+#version 450
+
+#include "common.glsl"
+
+void main()
+{
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    uint index =
+            gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
+    uint readIndex = pc.readBufferOffset + index;
+    uint writeIndex = pc.writeBufferOffset + index;
+    uint tempIndex = pc.tempBufferOffset + index;
+
+    if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
+    {
+        return;
+    }
+
+    data[tempIndex] = data[readIndex];
+}
+
+

@@ -51,11 +51,11 @@ void diffuse(
         {
             for(j = 1; j <= grid_size; j++)
             {
-                field[IX(i, j)] = (previous_field[IX(i, j)]
-                                   + a
-                                             * (field[IX(i - 1, j)] + field[IX(i + 1, j)]
-                                                + field[IX(i, j - 1)] + field[IX(i, j + 1)]))
-                                  / (1 + 4 * a);
+                field[IX(i, j)] = (
+                    previous_field[IX(i, j)]
+                    + a * (field[IX(i - 1, j)] + field[IX(i + 1, j)]
+                         + field[IX(i, j - 1)] + field[IX(i, j + 1)]))
+                        / (1 + 4 * a);
             }
         }
         set_boundary(grid_size, boundary, field);
@@ -140,12 +140,11 @@ void advect(int N, int b, float* d, float* d0, float* u, float* v, float dt)
 
             s1 = x - i0;
             s0 = 1 - s1;
-
             t1 = y - j0;
             t0 = 1 - t1;
 
-            d[IX(i, j)] = s0 * (t0 * d0[IX(i0, j0)] + t1 * d0 [IX(i0, j1)])
-                          + s1 * (t0 * d0[IX(i1, j0)] + t1 * d0 [IX(i1, j1)]);
+            d[IX(i, j)] = s0 * (t0 * d0[IX(i0, j0)] + t1 * d0[IX(i0, j1)])
+                          + s1 * (t0 * d0[IX(i1, j0)] + t1 * d0[IX(i1, j1)]);
         }
     }
     set_bnd(N, b, d);
@@ -264,7 +263,14 @@ void project(int grid_size,
 ```
 
 ### set_boundary
-This function sets the boundary conditions for a field (like density or velocity) over the entire grid. The boundary conditions determine how the field behaves at the edges of the grid. The field parameter is the field to set the boundary conditions for. The boundary parameter determines the type of boundary conditions to set. If boundary is 1, then the field is reflected at the boundaries (like a mirror). If boundary is 2, then the field is inverted at the boundaries (like a photograph negative). The grid_size parameter is the size of the grid.
+This function sets the boundary conditions for a field (like density or velocity)
+over the entire grid. The boundary conditions determine how the field behaves at
+the edges of the grid. The field parameter is the field to set the boundary
+conditions for. The boundary parameter determines the type of boundary conditions
+to set. If boundary is 1, then the field is reflected at the
+boundaries (like a mirror). If boundary is 2, then the field is inverted at
+the boundaries (like a photograph negative).
+The grid_size parameter is the size of the grid.
 ```c
 void set_boundary(int grid_size, int boundary, float* field)
 {
@@ -272,15 +278,22 @@ void set_boundary(int grid_size, int boundary, float* field)
     for(i = 1; i <= grid_size; i++)
     {
         field[IX(0, i)] = boundary == 1 ? -field[IX(1, i)] : field[IX(1, i)];
-        field[IX(grid_size + 1, i)] =
-                boundary == 1 ? -field[IX(grid_size, i)] : field[IX(grid_size, i)];
+
+        field[IX(grid_size + 1, i)] = boundary == 1 ? -field[IX(grid_size, i)] : field[IX(grid_size, i)];
+
         field[IX(i, 0)] = boundary == 2 ? -field[IX(i, 1)] : field[IX(i, 1)];
+
         field[IX(i, grid_size + 1)] =
                 boundary == 2 ? -field[IX(i, grid_size)] : field[IX(i, grid_size)];
     }
+
+    // Corners
     field[IX(0, 0)] = 0.5 * (field[IX(1, 0)] + field[IX(0, 1)]);
+
     field[IX(0, grid_size + 1)] = 0.5 * (field[IX(1, grid_size + 1)] + field[IX(0, grid_size)]);
+
     field[IX(grid_size + 1, 0)] = 0.5 * (field[IX(grid_size, 0)] + field[IX(grid_size + 1, 1)]);
+
     field[IX(grid_size + 1, grid_size + 1)] =
             0.5 * (field[IX(grid_size, grid_size + 1)] + field[IX(grid_size + 1, grid_size)]);
 }
