@@ -1,0 +1,48 @@
+#version 450
+
+#include "common.glsl"
+
+const vec2 ei[9] = {
+        vec2(0, 0),   // rest
+        vec2(1, 0),   // right
+        vec2(0, 1),   // top
+        vec2(-1, 0),  // left
+        vec2(0, -1),  // bottom
+        vec2(1, 1),   // top-right
+        vec2(-1, 1),  // top-left
+        vec2(-1, -1), // bottom-left
+        vec2(1, -1)   // bottom-right
+};
+
+void main()
+{
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    uint index = gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
+    uint readIndex = pc.readBufferOffset + index;
+    uint writeIndex = pc.writeBufferOffset + index;
+
+    if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
+    {
+        return;
+    }
+
+    GridCell cell = data[readIndex];
+
+    // Compute the macroscopic density by summing the distribution functions
+    cell.density = 0.0;
+    for(int i = 0; i < 9; ++i)
+    {
+        cell.density += cell.distribution[i];
+    }
+
+    // Compute the macroscopic velocity by taking a weighted sum of the distribution functions
+    cell.velocity = vec2(0.0);
+    for(int i = 0; i < 9; ++i)
+    {
+        cell.velocity += cell.distribution[i] * ei[i];
+    }
+    cell.velocity /= (cell.density + 0.10);
+
+    // Write the updated cell back to the buffer
+    data[writeIndex] = cell;
+}

@@ -1,0 +1,65 @@
+#version 450
+
+#include "common.glsl"
+
+// Lattice velocities for each direction in the 2DQ9 model
+const vec2 ei[9] = {
+        vec2(0, 0),   // rest
+        vec2(1, 0),   // right
+        vec2(0, 1),   // top
+        vec2(-1, 0),  // left
+        vec2(0, -1),  // bottom
+        vec2(1, 1),   // top-right
+        vec2(-1, 1),  // top-left
+        vec2(-1, -1), // bottom-left
+        vec2(1, -1)   // bottom-right
+};
+
+// Weights for each direction in the 2DQ9 model
+const float wi[9] = {
+        4.0f / 9.0f,  // rest
+        1.0f / 9.0f,  // right
+        1.0f / 9.0f,  // top
+        1.0f / 9.0f,  // left
+        1.0f / 9.0f,  // bottom
+        1.0f / 36.0f, // top-right
+        1.0f / 36.0f, // top-left
+        1.0f / 36.0f, // bottom-left
+        1.0f / 36.0f  // bottom-right
+};
+
+float equilibriumDistribution(int i, vec2 u, float rho)
+{
+    float eu = dot(ei[i], u);
+    float u2 = dot(u, u);
+    float feq = wi[i] * rho * (1.0 + 3.0 * eu + 4.5 * eu * eu - 1.5 * u2);
+    return feq;
+}
+
+void main()
+{
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    uint index = gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
+    uint readIndex = pc.readBufferOffset + index;
+    uint writeIndex = pc.writeBufferOffset + index;
+
+    // viscosity
+    const float tau = 0.8;
+
+    if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
+    {
+        return;
+    }
+
+    GridCell cell = data[readIndex];
+    vec2 velocity = cell.velocity;
+    float density = cell.density;
+
+    for(int i = 0; i < 9; ++i)
+    {
+        float feq = equilibriumDistribution(i, velocity, density);
+        cell.distribution[i] = cell.distribution[i] - (cell.distribution[i] - feq) / tau;
+    }
+
+    data[writeIndex] = cell;
+}

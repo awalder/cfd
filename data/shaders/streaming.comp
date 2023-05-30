@@ -1,0 +1,48 @@
+#version 450
+
+#include "common.glsl"
+
+// Lattice directions for the 2DQ9 model
+const ivec2 ei[9] = {
+        ivec2(0, 0),   // rest
+        ivec2(1, 0),   // right
+        ivec2(0, 1),   // top
+        ivec2(-1, 0),  // left
+        ivec2(0, -1),  // bottom
+        ivec2(1, 1),   // top-right
+        ivec2(-1, 1),  // top-left
+        ivec2(-1, -1), // bottom-left
+        ivec2(1, -1)   // bottom-right
+};
+
+void main()
+{
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    uint index = gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
+    uint readIndex = pc.readBufferOffset + index;
+    uint writeIndex = pc.writeBufferOffset + index;
+
+    if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
+    {
+        return;
+    }
+
+    GridCell cell = data[readIndex];
+
+    // Pull the distribution functions from the neighboring cells
+    for (int i = 0; i < 9; ++i)
+    {
+        ivec2 neighborPos = pos - ei[i]; // Note the minus sign here
+        if (neighborPos.x < 0 || neighborPos.x >= ubo.gridSize.x || neighborPos.y < 0 || neighborPos.y >= ubo.gridSize.y)
+        {
+            continue; // Skip if the neighbor is out of bounds
+        }
+
+        uint readIndex = pc.readBufferOffset + neighborPos.y * ubo.gridSize.x + neighborPos.x;
+        cell.distribution[i] = data[readIndex].distribution[i];
+    }
+
+    // Write the updated cell back to the buffer
+    data[writeIndex] = cell;
+}
+
