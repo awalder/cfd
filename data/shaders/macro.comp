@@ -41,8 +41,9 @@ void main()
     {
         cell.velocity += cell.distribution[i] * ei[i];
     }
-    cell.velocity /= (cell.density + 0.10);
-    cell.velocity = clamp(cell.velocity, -10000.0, 10000.0);
+    cell.velocity /= (cell.density + 0.01);
+    cell.velocity = clamp(cell.velocity, -500.0, 500.0);
+    cell.density = clamp(cell.density, 0.1, 10.0);
 
     // Write the updated cell back to the buffer
     data[writeIndex] = cell;

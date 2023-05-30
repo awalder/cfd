@@ -57,20 +57,15 @@ auto Simu::generateGrid() -> void
 {
     // allocating size for TWO buffers (current and next) and one additional
     // buffer for temporary memory space
-    auto count = _grid.size.x * _grid.size.y * 2;
+    auto count = _grid.size.x * _grid.size.y * 1;
     auto sizeInBytes = count * sizeof(GridCell);
     _grid.data.resize(count);
 
-    fmt::print(
-            "Grid size: {}x{} ({} cells, size {})\n",
-            _grid.size.x,
-            _grid.size.y,
-            count,
-            sizeInBytes);
-    fmt::print("Size of cell: {}\n", sizeof(GridCell));
-
-    glm::ivec2 cylinderCenter(_grid.size.x / 5 * 1, _grid.size.y / 2);
-    float cylinderRadius = (float)_grid.size.y / 8.f;
+    glm::ivec2 cylinderCenter(_grid.size.x / 5 * 1, _grid.size.y / 5 * 1);
+    glm::ivec2 cylinderCenter2(_grid.size.x / 5 * 1, _grid.size.y / 5 * 2);
+    glm::ivec2 cylinderCenter3(_grid.size.x / 5 * 1, _grid.size.y / 5 * 3);
+    glm::ivec2 cylinderCenter4(_grid.size.x / 5 * 1, _grid.size.y / 5 * 4);
+    float cylinderRadius = (float)_grid.size.y / 15.f;
 
     // Populate grid
     for(int i = 0; i < _grid.size.y; ++i)
@@ -78,22 +73,49 @@ auto Simu::generateGrid() -> void
         for(int j = 0; j < _grid.size.x; ++j)
         {
             auto& cell = _grid.data.at(i * _grid.size.x + j);
-            cell.velocity = glm::vec2(0.0f, 0.0f);
+            cell.velocity = glm::vec2(-0.001f, 0.0f);
 
-            glm::ivec2 cellPos(j, i);
-            glm::vec2 tmp = cellPos - cylinderCenter;
-            float distance = glm::length(tmp);
-            if(distance <= cylinderRadius)
             {
-                cell.isSolid = 1;
-                // Use a smooth gradient for the density
-                // cell.density = 2.0f * (1.0f - distance / cylinderRadius);
+                glm::ivec2 cellPos(j, i);
+                glm::vec2 tmp = cellPos - cylinderCenter;
+                float distance = glm::length(tmp);
+                if(distance <= cylinderRadius)
+                {
+                    cell.isSolid = 1;
+                    // Use a smooth gradient for the density
+                    // cell.density = 2.0f * (1.0f - distance / cylinderRadius);
+                }
             }
-            else
+
             {
-                cell.isSolid = 0;
+                glm::ivec2 cellPos(j, i);
+                glm::vec2 tmp = cellPos - cylinderCenter2;
+                float distance = glm::length(tmp);
+                if(distance <= cylinderRadius)
+                {
+                    cell.isSolid = 1;
+                }
             }
-            cell.density = 1.0f;
+            {
+                glm::ivec2 cellPos(j, i);
+                glm::vec2 tmp = cellPos - cylinderCenter3;
+                float distance = glm::length(tmp);
+                if(distance <= cylinderRadius)
+                {
+                    cell.isSolid = 1;
+                }
+            }
+            {
+                glm::ivec2 cellPos(j, i);
+                glm::vec2 tmp = cellPos - cylinderCenter4;
+                float distance = glm::length(tmp);
+                if(distance <= cylinderRadius)
+                {
+                    cell.isSolid = 1;
+                }
+            }
+
+            cell.density = 1.f;
 
             for(int k = 0; k < 9; ++k)
             {
@@ -259,12 +281,14 @@ auto Simu::recordCommandBuffer(uint32_t index) -> VkCommandBuffer
     barrierInfo.size = VK_WHOLE_SIZE;
 
     uint32_t N = _grid.size.x * _grid.size.y;
-    static auto pc = ComputePushConstant{.readBufferOffset = 0, .writeBufferOffset = N};
+    static auto pc = ComputePushConstant{.readBufferOffset = 0, .writeBufferOffset = 0};
     static bool toggle = true;
 
     auto swap = [&]() {
-        pc.readBufferOffset = toggle ? 0 : N;
-        pc.writeBufferOffset = toggle ? N : 0;
+        // pc.readBufferOffset = toggle ? 0 : N;
+        // pc.writeBufferOffset = toggle ? N : 0;
+        pc.readBufferOffset = 0;
+        pc.writeBufferOffset = 0;
         toggle = !toggle;
     };
 
@@ -312,7 +336,7 @@ auto Simu::recordCommandBuffer(uint32_t index) -> VkCommandBuffer
             0,
             nullptr);
 
-    for(int i = 0; i < 20; ++i)
+    for(int i = 0; i < 10; ++i)
     {
         { // Collision
             vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.collision);

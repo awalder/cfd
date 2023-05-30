@@ -44,7 +44,7 @@ void main()
     uint writeIndex = pc.writeBufferOffset + index;
 
     // viscosity
-    const float tau = 0.8;
+    const float tau = 1.0;
 
     if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
     {

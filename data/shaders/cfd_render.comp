@@ -6,6 +6,15 @@ layout(binding = 2, rgba8) uniform writeonly image2D image;
 
 const float M_PI = 3.1415926535897932384626433832795;
 
+vec3 palette(float t)
+{
+    vec3 a = vec3(0.5, 0.5, 0.5);
+    vec3 b = vec3(0.5, 0.5, 0.5);
+    vec3 c = vec3(1.0, 0.7, 0.4);
+    vec3 d = vec3(0.00, 0.15, 0.20);
+    return a + b * cos(6.28318 * (c * t + d));
+}
+
 void main()
 {
     ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
@@ -24,6 +33,10 @@ void main()
     // Normalize the velocity to the range [0, 1]
     float normalizedVelocity =
             velocityMagnitude / maxVelocity; // maxVelocity is the maximum possible velocity
+
+    float logVelocity = log2(normalizedVelocity * 16.0*128.0*8 + 1.0) / (8.0*2.0);
+    float logDensity = log2(density * 8.0 + 1.0) / (4.0*2.0); // Adjust the constants as needed
+    vec3 color;
 
     //////////////////////////////////////////
 
@@ -45,24 +58,34 @@ void main()
     //////////////////////////////////////////
     /// LOG VELOCITY
 
-    float logVelocity = log2(normalizedVelocity * 8.0*64.0*1 + 1.0) / (4.0*1.0); // Adjust the constants as needed
 
-       vec3 color;
-    if(logVelocity < 0.33)
-    {
-        // Linearly interpolate between black and purple for velocities in the range [0, 0.33]
-        color = mix(vec3(0.0, 0.0, 0.0), vec3(0.5, 0.0, 0.5), logVelocity * 3.0);
-    }
-    else if(logVelocity < 0.66)
-    {
-        // Linearly interpolate between purple and orange for velocities in the range [0.33, 0.66]
-        color = mix(vec3(0.5, 0.0, 0.5), vec3(1.0, 0.5, 0.0), (logVelocity - 0.33) * 3.0);
-    }
-    else
-    {
-        // Linearly interpolate between orange and white for velocities in the range [0.66, 1]
-        color = mix(vec3(1.0, 0.5, 0.0), vec3(1.0, 1.0, 1.0), (logVelocity - 0.66) * 3.0);
-    }
+    // if(logVelocity < 0.25)
+    // {
+    //     // Linearly interpolate between black and dark purple for velocities in the range [0, 0.25]
+    //     color = mix(vec3(0.0, 0.0, 0.0), vec3(0.25, 0.0, 0.25), logVelocity * 4.0);
+    // }
+    // else if(logVelocity < 0.5)
+    // {
+    //     // Linearly interpolate between dark purple and light purple for velocities in the range [0.25, 0.5]
+    //     color = mix(vec3(0.25, 0.0, 0.25), vec3(0.75, 0.0, 0.75), (logVelocity - 0.25) * 4.0);
+    // }
+    // else if(logVelocity < 0.75)
+    // {
+    //     // Linearly interpolate between light purple and orange for velocities in the range [0.5, 0.75]
+    //     color = mix(vec3(0.75, 0.0, 0.75), vec3(1.0, 0.5, 0.0), (logVelocity - 0.5) * 4.0);
+    // }
+    // else
+    // {
+    //     // Linearly interpolate between orange and white for velocities in the range [0.75, 1]
+    //     color = mix(vec3(1.0, 0.5, 0.0), vec3(1.0, 1.0, 1.0), (logVelocity - 0.75) * 4.0);
+    // }
+
+    color = palette(logVelocity);
+    // color = palette(density);
+    // color = palette(velocityMagnitude);
+
+    if(data[index].solid == 1)
+        color = vec3(0.0, 0.6, 0.0);
 
     // Store to image
     imageStore(image, pos, vec4(color, 1.0));
@@ -71,7 +94,6 @@ void main()
     //////////////////////////////////////////
     /// DENSITY
 
-    // float logDensity = log2(density * 8.0 + 1.0) / (4.0*2.0); // Adjust the constants as needed
     // vec3 color;
     // if(logDensity < 0.33)
     // {

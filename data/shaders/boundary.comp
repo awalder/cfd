@@ -95,18 +95,28 @@ void main()
         tmp = cell.distribution[6];
         cell.distribution[6] = cell.distribution[8];
         cell.distribution[8] = tmp;
+
+        cell.velocity = vec2(0.0);
+        cell.density = 1.;
+        // for(int i = 0; i < 9; ++i)
+        // {
+        //     cell.distribution[i] = equilibrium_distribution(
+        //             i, cell.velocity, cell.density);
+        // }
     }
+
     // Check if the cell is at the left boundary
-    if(pos.x == 0)
+    if(pos.x < 6 && pos.y > 0 && pos.y < ubo.gridSize.y - 1)
     {
         // Set the velocity to a non-zero value pointing to the right
-        cell.velocity = vec2(1.5, 0.0);
+        cell.velocity = vec2(100.0, 0.0);
+        cell.density = 1.0;
 
         // Compute the distribution functions based on the new velocity and the desired density
         for(int i = 0; i < 9; ++i)
         {
             cell.distribution[i] = equilibrium_distribution(
-                    i, cell.velocity, cell.density); // You need to define this function
+                    i, cell.velocity, cell.density);
         }
     }
     // Check if the cell is at the right boundary
@@ -118,6 +128,40 @@ void main()
         // GridCell interiorCell = getCell(pos, ivec(-1, 0));
         cell.distribution = data[interiorIndex].distribution;
     }
+
+
+    // Check if the cell is at the top or bottom boundary
+    // if(pos.y == 0 || pos.y == ubo.gridSize.y - 1)
+    // {
+    //     // Set the velocity to zero
+    //     cell.velocity = vec2(0.0, 0.0);
+    //
+    //     // Compute the distribution functions based on the new velocity and the desired density
+    //     // for(int i = 0; i < 9; ++i)
+    //     // {
+    //     //     cell.distribution[i] = equilibrium_distribution(
+    //     //             i, cell.velocity, cell.density); // You need to define this function
+    //     // }
+    //
+    //     // Apply the bounce-back boundary condition
+    //     float tmp;
+    //
+    //     tmp = cell.distribution[2];
+    //     cell.distribution[2] = cell.distribution[4];
+    //     cell.distribution[4] = tmp;
+    //
+    //     tmp = cell.distribution[5];
+    //     cell.distribution[5] = cell.distribution[7];
+    //     cell.distribution[7] = tmp;
+    //
+    //     tmp = cell.distribution[6];
+    //     cell.distribution[6] = cell.distribution[8];
+    //     cell.distribution[8] = tmp;
+    // }
+
+
+
+
     // Check if the cell is at the top boundary
     if(pos.y == 0)
     {
