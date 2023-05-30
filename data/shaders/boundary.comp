@@ -118,23 +118,21 @@ void main()
         // GridCell interiorCell = getCell(pos, ivec(-1, 0));
         cell.distribution = data[interiorIndex].distribution;
     }
-    // Check if the cell is at the top or bottom boundary
-    else if(pos.y == 0 || pos.y == ubo.gridSize.y - 1)
+    // Check if the cell is at the top boundary
+    if(pos.y == 0)
     {
-        // Apply the bounce-back boundary condition
-        float tmp;
-
-        tmp = cell.distribution[2];
-        cell.distribution[2] = cell.distribution[4];
-        cell.distribution[4] = tmp;
-
-        tmp = cell.distribution[5];
-        cell.distribution[5] = cell.distribution[7];
-        cell.distribution[7] = tmp;
-
-        tmp = cell.distribution[6];
-        cell.distribution[6] = cell.distribution[8];
-        cell.distribution[8] = tmp;
+        // Copy the distribution functions from the corresponding cell at the bottom boundary
+        ivec2 bottomPos = pos + ivec2(0, ubo.gridSize.y - 1);
+        uint bottomIndex = pc.readBufferOffset + bottomPos.y * ubo.gridSize.x + bottomPos.x;
+        cell.distribution = data[bottomIndex].distribution;
+    }
+    // Check if the cell is at the bottom boundary
+    else if(pos.y == ubo.gridSize.y - 1)
+    {
+        // Copy the distribution functions from the corresponding cell at the top boundary
+        ivec2 topPos = pos - ivec2(0, ubo.gridSize.y - 1);
+        uint topIndex = pc.readBufferOffset + topPos.y * ubo.gridSize.x + topPos.x;
+        cell.distribution = data[topIndex].distribution;
     }
 
     // Write the updated cell back to the buffer
