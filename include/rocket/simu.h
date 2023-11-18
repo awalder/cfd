@@ -107,7 +107,7 @@ private:
         // This buffer contains data for both read and write. alternating between every frame read
         // and write indices are swapped.
         vk::Buffer buffers;
-        glm::ivec2 size = {1024*4, 256*4};
+        glm::ivec2 size = {1024*2, 256*2};
     } _grid;
 
     struct

@@ -64,52 +64,104 @@ void main()
 {
     ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
     uint index = gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
-    uint readIndex = pc.readBufferOffset + index;
-    uint writeIndex = pc.writeBufferOffset + index;
 
     if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
     {
         return;
     }
 
-    GridCell cell = data[readIndex];
+    GridCell cell = data[index];
 
     // Check if the cell is inside the cylinder
     if(cell.solid == 1)
     {
+        // Zou/He Boundary Condition
+
+        // Prescribe the macroscopic variables (density and velocity) at the boundary
+        vec2 prescribed_velocity = vec2(0.0); // modify as needed
+        float prescribed_density = 1.0;       // modify as needed
+
+        // Compute the equilibrium distribution
+        float equilibrium_distributions[9];
+        for(int i = 0; i < 9; ++i)
+        {
+            equilibrium_distributions[i] =
+                    equilibrium_distribution(i, prescribed_velocity, prescribed_density);
+        }
+
+        // Apply the Zou/He boundary condition
+        cell.distribution[3] =
+                equilibrium_distributions[3] + cell.distribution[1] - equilibrium_distributions[1];
+        cell.distribution[4] =
+                equilibrium_distributions[4] + cell.distribution[2] - equilibrium_distributions[2];
+        cell.distribution[7] =
+                equilibrium_distributions[7] + cell.distribution[5] - equilibrium_distributions[5];
+        cell.distribution[8] =
+                equilibrium_distributions[8] + cell.distribution[6] - equilibrium_distributions[6];
+
+        // Compute the non-equilibrium part of the distribution function
+        for(int i = 0; i < 9; ++i)
+        {
+            cell.distribution[i] = equilibrium_distributions[i] + cell.distribution[i]
+                                   - equilibrium_distributions[i];
+        }
+
+        cell.velocity = prescribed_velocity;
+        cell.density = prescribed_density;
+
         // Apply the bounce-back boundary condition
-        float tmp;
-
-        tmp = cell.distribution[1];
-        cell.distribution[1] = cell.distribution[3];
-        cell.distribution[3] = tmp;
-
-        tmp = cell.distribution[2];
-        cell.distribution[2] = cell.distribution[4];
-        cell.distribution[4] = tmp;
-
-        tmp = cell.distribution[5];
-        cell.distribution[5] = cell.distribution[7];
-        cell.distribution[7] = tmp;
-
-        tmp = cell.distribution[6];
-        cell.distribution[6] = cell.distribution[8];
-        cell.distribution[8] = tmp;
-
-        cell.velocity = vec2(0.0);
-        cell.density = 1.;
-        // for(int i = 0; i < 9; ++i)
-        // {
-        //     cell.distribution[i] = equilibrium_distribution(
-        //             i, cell.velocity, cell.density);
-        // }
+        // float tmp;
+        //
+        // tmp = cell.distribution[1];
+        // cell.distribution[1] = cell.distribution[3];
+        // cell.distribution[3] = tmp;
+        //
+        // tmp = cell.distribution[2];
+        // cell.distribution[2] = cell.distribution[4];
+        // cell.distribution[4] = tmp;
+        //
+        // tmp = cell.distribution[5];
+        // cell.distribution[5] = cell.distribution[7];
+        // cell.distribution[7] = tmp;
+        //
+        // tmp = cell.distribution[6];
+        // cell.distribution[6] = cell.distribution[8];
+        // cell.distribution[8] = tmp;
+        //
+        // cell.velocity = vec2(0.0);
     }
 
     // Check if the cell is at the left boundary
-    if(pos.x < 6 && pos.y > 0 && pos.y < ubo.gridSize.y - 1)
+    // if(pos.x < 6)
+    // {
+    //     // Gradually increase the velocity over a few cells from the boundary
+    //     float max_velocity = 40.0;
+    //     float transition_cells = 6.0;
+    //     float velocity_scale = min(float(pos.x) / transition_cells, 1.0);
+    //     cell.velocity = vec2(max_velocity * velocity_scale, 0.0);
+    //     cell.density = 1.0;
+    //
+    //     // Compute the distribution functions based on the new velocity and the desired density
+    //     for(int i = 0; i < 9; ++i)
+    //     {
+    //         cell.distribution[i] = equilibrium_distribution(i, cell.velocity, cell.density);
+    //     }
+    // }    // Check if the cell is at the left boundary or near it
+    if(pos.x < 20)
     {
-        // Set the velocity to a non-zero value pointing to the right
-        cell.velocity = vec2(100.0, 0.0);
+        // Set the velocity at the boundary
+        if(pos.x < 1)
+        {
+            cell.velocity = vec2(8.0, 0.0);
+        }
+        // Gradually increase the velocity over a few cells from the boundary
+        else
+        {
+            float max_velocity = 8.0;
+            float transition_cells = 20.0;
+            float velocity_scale = min(float(pos.x) / transition_cells, 1.0);
+            cell.velocity = vec2(max_velocity * velocity_scale, 0.0);
+        }
         cell.density = 1.0;
 
         // Compute the distribution functions based on the new velocity and the desired density
@@ -122,64 +174,83 @@ void main()
     // Check if the cell is at the right boundary
     else if(pos.x == ubo.gridSize.x - 1)
     {
-        // Copy the distribution functions from the interior cell
-        ivec2 interiorPos = pos - ivec2(1, 0);
-        uint interiorIndex = pc.readBufferOffset + interiorPos.y * ubo.gridSize.x + interiorPos.x;
-        // GridCell interiorCell = getCell(pos, ivec(-1, 0));
-        cell.distribution = data[interiorIndex].distribution;
-    }
+        // Prescribe the density at the boundary
+        float prescribed_density = 1.0; // modify as needed
 
+        // Compute the equilibrium distribution based on the current velocity and the prescribed
+        // density
+        float equilibrium_distributions[9];
+        for(int i = 0; i < 9; ++i)
+        {
+            equilibrium_distributions[i] =
+                    equilibrium_distribution(i, cell.velocity, prescribed_density);
+        }
+
+        // Apply the Zou/He boundary condition
+        cell.distribution[1] =
+                equilibrium_distributions[1] + cell.distribution[3] - equilibrium_distributions[3];
+        cell.distribution[5] =
+                equilibrium_distributions[5] + cell.distribution[7] - equilibrium_distributions[7];
+        cell.distribution[8] =
+                equilibrium_distributions[8] + cell.distribution[6] - equilibrium_distributions[6];
+
+        // Compute the non-equilibrium part of the distribution function
+        for(int i = 0; i < 9; ++i)
+        {
+            cell.distribution[i] = equilibrium_distributions[i] + cell.distribution[i]
+                                   - equilibrium_distributions[i];
+        }
+
+        cell.density = prescribed_density;
+    }
 
     // Check if the cell is at the top or bottom boundary
-    // if(pos.y == 0 || pos.y == ubo.gridSize.y - 1)
-    // {
-    //     // Set the velocity to zero
-    //     cell.velocity = vec2(0.0, 0.0);
-    //
-    //     // Compute the distribution functions based on the new velocity and the desired density
-    //     // for(int i = 0; i < 9; ++i)
-    //     // {
-    //     //     cell.distribution[i] = equilibrium_distribution(
-    //     //             i, cell.velocity, cell.density); // You need to define this function
-    //     // }
-    //
-    //     // Apply the bounce-back boundary condition
-    //     float tmp;
-    //
-    //     tmp = cell.distribution[2];
-    //     cell.distribution[2] = cell.distribution[4];
-    //     cell.distribution[4] = tmp;
-    //
-    //     tmp = cell.distribution[5];
-    //     cell.distribution[5] = cell.distribution[7];
-    //     cell.distribution[7] = tmp;
-    //
-    //     tmp = cell.distribution[6];
-    //     cell.distribution[6] = cell.distribution[8];
-    //     cell.distribution[8] = tmp;
-    // }
+    else if(pos.y == 0 || pos.y == ubo.gridSize.y - 1)
+    {
+        // Set the velocity to zero
+        cell.velocity = vec2(0.0, 0.0);
 
+        // Compute the distribution functions based on the new velocity and the desired density
+        // for(int i = 0; i < 9; ++i)
+        // {
+        //     cell.distribution[i] = equilibrium_distribution(
+        //             i, cell.velocity, cell.density); // You need to define this function
+        // }
 
+        // Apply the bounce-back boundary condition
+        float tmp;
 
+        tmp = cell.distribution[2];
+        cell.distribution[2] = cell.distribution[4];
+        cell.distribution[4] = tmp;
+
+        tmp = cell.distribution[5];
+        cell.distribution[5] = cell.distribution[7];
+        cell.distribution[7] = tmp;
+
+        tmp = cell.distribution[6];
+        cell.distribution[6] = cell.distribution[8];
+        cell.distribution[8] = tmp;
+    }
 
     // Check if the cell is at the top boundary
-    if(pos.y == 0)
-    {
-        // Copy the distribution functions from the corresponding cell at the bottom boundary
-        ivec2 bottomPos = pos + ivec2(0, ubo.gridSize.y - 1);
-        uint bottomIndex = pc.readBufferOffset + bottomPos.y * ubo.gridSize.x + bottomPos.x;
-        cell.distribution = data[bottomIndex].distribution;
-    }
-    // Check if the cell is at the bottom boundary
-    else if(pos.y == ubo.gridSize.y - 1)
-    {
-        // Copy the distribution functions from the corresponding cell at the top boundary
-        ivec2 topPos = pos - ivec2(0, ubo.gridSize.y - 1);
-        uint topIndex = pc.readBufferOffset + topPos.y * ubo.gridSize.x + topPos.x;
-        cell.distribution = data[topIndex].distribution;
-    }
+    // if(pos.y == 0)
+    // {
+    //     // Copy the distribution functions from the corresponding cell at the bottom boundary
+    //     ivec2 bottomPos = pos + ivec2(0, ubo.gridSize.y - 1);
+    //     uint bottomIndex = pc.readBufferOffset + bottomPos.y * ubo.gridSize.x + bottomPos.x;
+    //     cell.distribution = data[bottomIndex].distribution;
+    // }
+    // // Check if the cell is at the bottom boundary
+    // else if(pos.y == ubo.gridSize.y - 1)
+    // {
+    //     // Copy the distribution functions from the corresponding cell at the top boundary
+    //     ivec2 topPos = pos - ivec2(0, ubo.gridSize.y - 1);
+    //     uint topIndex = pc.readBufferOffset + topPos.y * ubo.gridSize.x + topPos.x;
+    //     cell.distribution = data[topIndex].distribution;
+    // }
 
     // Write the updated cell back to the buffer
-    data[writeIndex] = cell;
+    data[index] = cell;
 }
 

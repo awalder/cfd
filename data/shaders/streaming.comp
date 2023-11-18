@@ -19,15 +19,13 @@ void main()
 {
     ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
     uint index = gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
-    uint readIndex = pc.readBufferOffset + index;
-    uint writeIndex = pc.writeBufferOffset + index;
 
     if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
     {
         return;
     }
 
-    GridCell cell = data[readIndex];
+    GridCell cell = data[index];
 
     // Pull the distribution functions from the neighboring cells
     for (int i = 0; i < 9; ++i)
@@ -38,11 +36,11 @@ void main()
             continue; // Skip if the neighbor is out of bounds
         }
 
-        uint readIndex = pc.readBufferOffset + neighborPos.y * ubo.gridSize.x + neighborPos.x;
+        uint readIndex = neighborPos.y * ubo.gridSize.x + neighborPos.x;
         cell.distribution[i] = data[readIndex].distribution[i];
     }
 
     // Write the updated cell back to the buffer
-    data[writeIndex] = cell;
+    data[index] = cell;
 }
 

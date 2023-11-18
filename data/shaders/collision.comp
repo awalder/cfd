@@ -40,18 +40,16 @@ void main()
 {
     ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
     uint index = gl_GlobalInvocationID.y * ubo.gridSize.x + gl_GlobalInvocationID.x;
-    uint readIndex = pc.readBufferOffset + index;
-    uint writeIndex = pc.writeBufferOffset + index;
 
     // viscosity
-    const float tau = 1.0;
+    const float tau = 0.85;
 
     if(pos.x >= ubo.gridSize.x || pos.y >= ubo.gridSize.y)
     {
         return;
     }
 
-    GridCell cell = data[readIndex];
+    GridCell cell = data[index];
     vec2 velocity = cell.velocity;
     float density = cell.density;
 
@@ -61,5 +59,5 @@ void main()
         cell.distribution[i] = cell.distribution[i] - (cell.distribution[i] - feq) / tau;
     }
 
-    data[writeIndex] = cell;
+    data[index] = cell;
 }

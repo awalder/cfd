@@ -61,10 +61,10 @@ auto Simu::generateGrid() -> void
     auto sizeInBytes = count * sizeof(GridCell);
     _grid.data.resize(count);
 
-    glm::ivec2 cylinderCenter(_grid.size.x / 5 * 1, _grid.size.y / 5 * 1);
-    glm::ivec2 cylinderCenter2(_grid.size.x / 5 * 1, _grid.size.y / 5 * 2);
-    glm::ivec2 cylinderCenter3(_grid.size.x / 5 * 1, _grid.size.y / 5 * 3);
-    glm::ivec2 cylinderCenter4(_grid.size.x / 5 * 1, _grid.size.y / 5 * 4);
+    glm::ivec2 cylinderCenter(_grid.size.x / 5 * 1, _grid.size.y / 2 * 1);
+    // glm::ivec2 cylinderCenter2(_grid.size.x / 5 * 1, _grid.size.y / 5 * 2);
+    // glm::ivec2 cylinderCenter3(_grid.size.x / 5 * 1, _grid.size.y / 5 * 3);
+    // glm::ivec2 cylinderCenter4(_grid.size.x / 5 * 1, _grid.size.y / 5 * 4);
     float cylinderRadius = (float)_grid.size.y / 15.f;
 
     // Populate grid
@@ -87,33 +87,33 @@ auto Simu::generateGrid() -> void
                 }
             }
 
-            {
-                glm::ivec2 cellPos(j, i);
-                glm::vec2 tmp = cellPos - cylinderCenter2;
-                float distance = glm::length(tmp);
-                if(distance <= cylinderRadius)
-                {
-                    cell.isSolid = 1;
-                }
-            }
-            {
-                glm::ivec2 cellPos(j, i);
-                glm::vec2 tmp = cellPos - cylinderCenter3;
-                float distance = glm::length(tmp);
-                if(distance <= cylinderRadius)
-                {
-                    cell.isSolid = 1;
-                }
-            }
-            {
-                glm::ivec2 cellPos(j, i);
-                glm::vec2 tmp = cellPos - cylinderCenter4;
-                float distance = glm::length(tmp);
-                if(distance <= cylinderRadius)
-                {
-                    cell.isSolid = 1;
-                }
-            }
+            // {
+            //     glm::ivec2 cellPos(j, i);
+            //     glm::vec2 tmp = cellPos - cylinderCenter2;
+            //     float distance = glm::length(tmp);
+            //     if(distance <= cylinderRadius)
+            //     {
+            //         cell.isSolid = 1;
+            //     }
+            // }
+            // {
+            //     glm::ivec2 cellPos(j, i);
+            //     glm::vec2 tmp = cellPos - cylinderCenter3;
+            //     float distance = glm::length(tmp);
+            //     if(distance <= cylinderRadius)
+            //     {
+            //         cell.isSolid = 1;
+            //     }
+            // }
+            // {
+            //     glm::ivec2 cellPos(j, i);
+            //     glm::vec2 tmp = cellPos - cylinderCenter4;
+            //     float distance = glm::length(tmp);
+            //     if(distance <= cylinderRadius)
+            //     {
+            //         cell.isSolid = 1;
+            //     }
+            // }
 
             cell.density = 1.f;
 
@@ -336,7 +336,7 @@ auto Simu::recordCommandBuffer(uint32_t index) -> VkCommandBuffer
             0,
             nullptr);
 
-    for(int i = 0; i < 10; ++i)
+    for(int i = 0; i < 4; ++i)
     {
         { // Collision
             vkCmdBindPipeline(buf, VK_PIPELINE_BIND_POINT_COMPUTE, _compute.collision);
